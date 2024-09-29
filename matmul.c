@@ -9,6 +9,8 @@
     Jason Riedy
 */
 
+#define DEBUG_RUN
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +18,7 @@
 #include <math.h>
 #include <omp.h>
 
+// #include "dgemm_mine.h"
 #ifndef COMPILER
 #  define COMPILER "unknown"
 #endif
@@ -27,7 +30,8 @@
   Your function _MUST_ have the following signature:
 */
 extern const char* dgemm_desc;
-extern void square_dgemm();
+// extern void square_dgemm();
+void square_dgemm(int M, const double *A, const double *B, double *C);
 
 /*
   We try to run enough iterations to get reasonable timings.  The matrices
