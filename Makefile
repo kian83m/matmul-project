@@ -88,9 +88,16 @@ run-matmul-mine: matmul-mine
 	$(PYTHON) plotter.py mine
 
 
+run-advixe-mine: matmul-mine
+	make realclean
+	rm -rf test/*
+	make run-matmul-mine
+	advixe-cl -collect survey -project-dir test -- ./matmul-mine && advixe-cl -collect tripcounts -project-dir test -- ./matmul-mine && advixe-cl -collect roofline -project-dir test -- ./matmul-mine && advixe-cl -report roofline -project-dir test/
+
+
 .PHONY:	clean realclean 
 clean:
 	rm -f matmul-* *.o
 
 realclean: clean
-	rm -f *~ timing-*.csv timing.pdf dump_*.txt
+	rm -f *~ timing-*.csv timing.pdf dump_*.txt 
