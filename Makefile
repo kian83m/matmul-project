@@ -90,9 +90,9 @@ run-matmul-mine: matmul-mine
 
 run-advixe-mine: matmul-mine
 	make realclean
-	rm -rf test/*
+	rm -rf intelAnalysis/*
 	make run-matmul-mine
-	advixe-cl -collect survey -project-dir test -- ./matmul-mine && advixe-cl -collect tripcounts -project-dir test -- ./matmul-mine && advixe-cl -collect roofline -project-dir test -- ./matmul-mine && advixe-cl -report roofline -project-dir test/
+	advixe-cl -collect survey -project-dir intelAnalysis -- ./matmul-mine && advixe-cl -collect tripcounts -project-dir intelAnalysis -- ./matmul-mine && advixe-cl -collect roofline -project-dir intelAnalysis -- ./matmul-mine && advixe-cl -report roofline -project-dir intelAnalysis/
 
 
 .PHONY:	clean realclean 
