@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- <!DOCTYPE IntelParallelAdvisorSummaryCollection SYSTEM  "IntelParallelAdvisorSummaryCollection.dtd"> -->
+
+<IntelParallelAdvisorSummary version="" 
+                             kind="DATAKIND_SURVEY_EX" >
+  <hotspot filename=""
+           line_no="4294967295"
+           routine="square_dgemm"
+           is_vectorized="1"
+           self_time="1.760000E+01"
+           total_time="1.760000E+01"
+           trip_counts="92"
+           func_instance="55"
+           priority="0"/>
+  <hotspot filename=""
+           line_no="4294967295"
+           routine="validate_dgemm"
+           is_vectorized="1"
+           self_time="1.262798E+01"
+           total_time="1.262798E+01"
+           trip_counts="141"
+           func_instance="64"
+           priority="0"/>
+  <hotspot filename=""
+           line_no="4294967295"
+           routine="square_dgemm"
+           is_vectorized="0"
+           self_time="2.368014E+00"
+           total_time="2.345397E+01"
+           trip_counts="11"
+           func_instance="53"
+           priority="0"/>
+  <hotspot filename=""
+           line_no="4294967295"
+           routine="square_dgemm"
+           is_vectorized="1"
+           self_time="1.390005E+00"
+           total_time="1.390005E+00"
+           trip_counts="8"
+           func_instance="60"
+           priority="0"/>
+  <hotspot filename=""
+           line_no="4294967295"
+           routine="square_dgemm"
+           is_vectorized="1"
+           self_time="9.879928E-01"
+           total_time="9.879928E-01"
+           trip_counts="17"
+           func_instance="58"
+           priority="0"/>
+</IntelParallelAdvisorSummary >
