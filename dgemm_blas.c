@@ -3,7 +3,7 @@
 #elif defined(__ICC) || defined(__INTEL_COMPILER)
 #include <mkl_cblas.h>
 #elif defined(__GNUC__) || defined(__GNUG__)
-#include <cblas.h>
+#include <mkl_cblas.h>
 #endif
 
 const char *dgemm_desc = "System CBLAS dgemm.";

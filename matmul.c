@@ -9,7 +9,7 @@
     Jason Riedy
 */
 
-// #define DEBUG_RUN
+#define DEBUG_RUN
 
 #include <stdlib.h>
 #include <stdio.h>

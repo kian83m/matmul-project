@@ -1,7 +1,7 @@
 const char* dgemm_desc = "My awesome dgemm.";
 
-//best verrsion? timing 17,18
-#include <immintrin.h> // Include AVX-512 intrinsics
+//best version? timing 17,18
+#include <immintrin.h> // Include AVX2 intrinsics
 #include <omp.h>
 #include <stdlib.h>    // For aligned memory allocation if needed
 
@@ -11,71 +11,90 @@ const char* dgemm_desc = "My awesome dgemm.";
 
 #define min(a,b) (((a)<(b))?(a):(b))
 
-/* Optimized do_block with enhanced general case handling using AVX-512 masks */
+/* Optimized do_block with enhanced general case handling using AVX2 */
 static void do_block(const int lda, const int ldb, const int ldc,
                      const int M_block, const int N_block, const int K_block,
                      const double *restrict A_block, const double *restrict B_block, double *restrict C_block)
 {
     if (M_block == M_BLOCK_SIZE && N_block == N_BLOCK_SIZE)
     {
-        // Optimized kernel for 16x16 block using AVX-512
+        // Optimized kernel for 16x16 block using AVX2
 
-        // Arrays to hold the C registers (16 columns, each with two __m512d for 16 elements)
-        __m512d c[16][2];
+        // Arrays to hold the C registers (16 columns, each with four __m256d for 16 elements)
+        __m256d c[16][4];
 
         // Load C columns
         for (int j = 0; j < 16; ++j)
         {
-            c[j][0] = _mm512_loadu_pd(&C_block[j * ldc + 0]); // Lower 8 elements
-            c[j][1] = _mm512_loadu_pd(&C_block[j * ldc + 8]); // Upper 8 elements
+            c[j][0] = _mm256_loadu_pd(&C_block[j * ldc + 0]);   // Elements 0-3
+            c[j][1] = _mm256_loadu_pd(&C_block[j * ldc + 4]);   // Elements 4-7
+            c[j][2] = _mm256_loadu_pd(&C_block[j * ldc + 8]);   // Elements 8-11
+            c[j][3] = _mm256_loadu_pd(&C_block[j * ldc + 12]);  // Elements 12-15
         }
 
         for (int k = 0; k < K_block; ++k)
         {
             // Load A column
-            __m512d a_vec0 = _mm512_loadu_pd(&A_block[k * lda + 0]);
-            __m512d a_vec1 = _mm512_loadu_pd(&A_block[k * lda + 8]);
+            __m256d a_vec0 = _mm256_loadu_pd(&A_block[k * lda + 0]);
+            __m256d a_vec1 = _mm256_loadu_pd(&A_block[k * lda + 4]);
+            __m256d a_vec2 = _mm256_loadu_pd(&A_block[k * lda + 8]);
+            __m256d a_vec3 = _mm256_loadu_pd(&A_block[k * lda + 12]);
 
             // Perform FMA for each column j
             for (int j = 0; j < 16; ++j)
             {
                 double b_scalar = B_block[k + j * ldb];
-                __m512d b_val = _mm512_set1_pd(b_scalar);
-                c[j][0] = _mm512_fmadd_pd(a_vec0, b_val, c[j][0]);
-                c[j][1] = _mm512_fmadd_pd(a_vec1, b_val, c[j][1]);
+                __m256d b_val = _mm256_set1_pd(b_scalar);
+                c[j][0] = _mm256_fmadd_pd(a_vec0, b_val, c[j][0]);
+                c[j][1] = _mm256_fmadd_pd(a_vec1, b_val, c[j][1]);
+                c[j][2] = _mm256_fmadd_pd(a_vec2, b_val, c[j][2]);
+                c[j][3] = _mm256_fmadd_pd(a_vec3, b_val, c[j][3]);
             }
         }
 
         // Store the updated C columns
         for (int j = 0; j < 16; ++j)
         {
-            _mm512_storeu_pd(&C_block[j * ldc + 0], c[j][0]);
-            _mm512_storeu_pd(&C_block[j * ldc + 8], c[j][1]);
+            _mm256_storeu_pd(&C_block[j * ldc + 0], c[j][0]);
+            _mm256_storeu_pd(&C_block[j * ldc + 4], c[j][1]);
+            _mm256_storeu_pd(&C_block[j * ldc + 8], c[j][2]);
+            _mm256_storeu_pd(&C_block[j * ldc + 12], c[j][3]);
         }
     }
     else if (M_block == M_BLOCK_SIZE)
     {
-        // Vectorized over M dimension using AVX-512
+        // Vectorized over M dimension using AVX2
         for (int j = 0; j < N_block; ++j)
         {
-            __m512d c_vec0 = _mm512_loadu_pd(&C_block[j * ldc + 0]);
-            __m512d c_vec1 = _mm512_loadu_pd(&C_block[j * ldc + 8]);
+            __m256d c_vec0 = _mm256_loadu_pd(&C_block[j * ldc + 0]);
+            __m256d c_vec1 = _mm256_loadu_pd(&C_block[j * ldc + 4]);
+            __m256d c_vec2 = _mm256_loadu_pd(&C_block[j * ldc + 8]);
+            __m256d c_vec3 = _mm256_loadu_pd(&C_block[j * ldc + 12]);
+
             for (int k = 0; k < K_block; ++k)
             {
-                __m512d a_vec0 = _mm512_loadu_pd(&A_block[k * lda + 0]);
-                __m512d a_vec1 = _mm512_loadu_pd(&A_block[k * lda + 8]);
+                __m256d a_vec0 = _mm256_loadu_pd(&A_block[k * lda + 0]);
+                __m256d a_vec1 = _mm256_loadu_pd(&A_block[k * lda + 4]);
+                __m256d a_vec2 = _mm256_loadu_pd(&A_block[k * lda + 8]);
+                __m256d a_vec3 = _mm256_loadu_pd(&A_block[k * lda + 12]);
+
                 double b_scalar = B_block[k + j * ldb];
-                __m512d b_val = _mm512_set1_pd(b_scalar);
-                c_vec0 = _mm512_fmadd_pd(a_vec0, b_val, c_vec0);
-                c_vec1 = _mm512_fmadd_pd(a_vec1, b_val, c_vec1);
+                __m256d b_val = _mm256_set1_pd(b_scalar);
+
+                c_vec0 = _mm256_fmadd_pd(a_vec0, b_val, c_vec0);
+                c_vec1 = _mm256_fmadd_pd(a_vec1, b_val, c_vec1);
+                c_vec2 = _mm256_fmadd_pd(a_vec2, b_val, c_vec2);
+                c_vec3 = _mm256_fmadd_pd(a_vec3, b_val, c_vec3);
             }
-            _mm512_storeu_pd(&C_block[j * ldc + 0], c_vec0);
-            _mm512_storeu_pd(&C_block[j * ldc + 8], c_vec1);
+            _mm256_storeu_pd(&C_block[j * ldc + 0], c_vec0);
+            _mm256_storeu_pd(&C_block[j * ldc + 4], c_vec1);
+            _mm256_storeu_pd(&C_block[j * ldc + 8], c_vec2);
+            _mm256_storeu_pd(&C_block[j * ldc + 12], c_vec3);
         }
     }
     else
     {
-        // Enhanced general case with hierarchical vectorization and masking
+        // Enhanced general case with hierarchical vectorization
 
         for (int j = 0; j < N_block; ++j)
         {
@@ -84,56 +103,84 @@ static void do_block(const int lda, const int ldb, const int ldc,
             // Process blocks of 16 elements
             for (; i <= M_block - 16; i += 16)
             {
-                // Load C in two vectors
-                __m512d c0 = _mm512_loadu_pd(&C_block[i + j * ldc + 0]);
-                __m512d c1 = _mm512_loadu_pd(&C_block[i + j * ldc + 8]);
+                // Load C in four vectors
+                __m256d c0 = _mm256_loadu_pd(&C_block[i + j * ldc + 0]);
+                __m256d c1 = _mm256_loadu_pd(&C_block[i + j * ldc + 4]);
+                __m256d c2 = _mm256_loadu_pd(&C_block[i + j * ldc + 8]);
+                __m256d c3 = _mm256_loadu_pd(&C_block[i + j * ldc + 12]);
 
                 // Accumulate over K
                 for (int k = 0; k < K_block; ++k)
                 {
-                    __m512d a0 = _mm512_loadu_pd(&A_block[i + k * lda + 0]);
-                    __m512d a1 = _mm512_loadu_pd(&A_block[i + k * lda + 8]);
+                    __m256d a0 = _mm256_loadu_pd(&A_block[i + k * lda + 0]);
+                    __m256d a1 = _mm256_loadu_pd(&A_block[i + k * lda + 4]);
+                    __m256d a2 = _mm256_loadu_pd(&A_block[i + k * lda + 8]);
+                    __m256d a3 = _mm256_loadu_pd(&A_block[i + k * lda + 12]);
+
                     double b_scalar = B_block[k + j * ldb];
-                    __m512d b_val = _mm512_set1_pd(b_scalar);
-                    c0 = _mm512_fmadd_pd(a0, b_val, c0);
-                    c1 = _mm512_fmadd_pd(a1, b_val, c1);
+                    __m256d b_val = _mm256_set1_pd(b_scalar);
+
+                    c0 = _mm256_fmadd_pd(a0, b_val, c0);
+                    c1 = _mm256_fmadd_pd(a1, b_val, c1);
+                    c2 = _mm256_fmadd_pd(a2, b_val, c2);
+                    c3 = _mm256_fmadd_pd(a3, b_val, c3);
                 }
 
                 // Store the results
-                _mm512_storeu_pd(&C_block[i + j * ldc + 0], c0);
-                _mm512_storeu_pd(&C_block[i + j * ldc + 8], c1);
+                _mm256_storeu_pd(&C_block[i + j * ldc + 0], c0);
+                _mm256_storeu_pd(&C_block[i + j * ldc + 4], c1);
+                _mm256_storeu_pd(&C_block[i + j * ldc + 8], c2);
+                _mm256_storeu_pd(&C_block[i + j * ldc + 12], c3);
             }
 
-            // Process remaining 8 elements
+            // Process blocks of 8 elements
             for (; i <= M_block - 8; i += 8)
             {
-                __m512d c_vec = _mm512_loadu_pd(&C_block[i + j * ldc]);
+                // Load C in two vectors
+                __m256d c0 = _mm256_loadu_pd(&C_block[i + j * ldc + 0]);
+                __m256d c1 = _mm256_loadu_pd(&C_block[i + j * ldc + 4]);
+
+                // Accumulate over K
                 for (int k = 0; k < K_block; ++k)
                 {
-                    __m512d a_vec = _mm512_loadu_pd(&A_block[i + k * lda]);
+                    __m256d a0 = _mm256_loadu_pd(&A_block[i + k * lda + 0]);
+                    __m256d a1 = _mm256_loadu_pd(&A_block[i + k * lda + 4]);
+
                     double b_scalar = B_block[k + j * ldb];
-                    __m512d b_val = _mm512_set1_pd(b_scalar);
-                    c_vec = _mm512_fmadd_pd(a_vec, b_val, c_vec);
+                    __m256d b_val = _mm256_set1_pd(b_scalar);
+
+                    c0 = _mm256_fmadd_pd(a0, b_val, c0);
+                    c1 = _mm256_fmadd_pd(a1, b_val, c1);
                 }
-                _mm512_storeu_pd(&C_block[i + j * ldc], c_vec);
+
+                // Store the results
+                _mm256_storeu_pd(&C_block[i + j * ldc + 0], c0);
+                _mm256_storeu_pd(&C_block[i + j * ldc + 4], c1);
             }
 
-            // Handle remaining elements with AVX-512 masking
-            if (i < M_block)
+            // Process blocks of 4 elements
+            for (; i <= M_block - 4; i += 4)
             {
-                int remaining = M_block - i;
-                __mmask8 mask = (1 << remaining) - 1; // Mask for remaining elements (up to 8)
-
-                // Load C with mask
-                __m512d c_partial = _mm512_mask_load_pd(_mm512_setzero_pd(), mask, &C_block[i + j * ldc]);
+                __m256d c_vec = _mm256_loadu_pd(&C_block[i + j * ldc]);
                 for (int k = 0; k < K_block; ++k)
                 {
-                    __m512d a_partial = _mm512_mask_load_pd(_mm512_setzero_pd(), mask, &A_block[i + k * lda]);
+                    __m256d a_vec = _mm256_loadu_pd(&A_block[i + k * lda]);
                     double b_scalar = B_block[k + j * ldb];
-                    __m512d b_val = _mm512_set1_pd(b_scalar);
-                    c_partial = _mm512_fmadd_pd(a_partial, b_val, c_partial);
+                    __m256d b_val = _mm256_set1_pd(b_scalar);
+                    c_vec = _mm256_fmadd_pd(a_vec, b_val, c_vec);
                 }
-                _mm512_mask_store_pd(&C_block[i + j * ldc], mask, c_partial);
+                _mm256_storeu_pd(&C_block[i + j * ldc], c_vec);
+            }
+
+            // Handle remaining elements with scalar code
+            for (; i < M_block; ++i)
+            {
+                double c_val = C_block[i + j * ldc];
+                for (int k = 0; k < K_block; ++k)
+                {
+                    c_val += A_block[i + k * lda] * B_block[k + j * ldb];
+                }
+                C_block[i + j * ldc] = c_val;
             }
         }
     }
