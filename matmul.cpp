@@ -9,7 +9,7 @@
     Jason Riedy
 */
 
-#define DEBUG_RUN
+// #define DEBUG_RUN
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -56,8 +56,9 @@ const int test_sizes[] = {
 // # define MAX_SIZE 208u
 #else
     255, 256, 257, 319, 320, 321, 417, 479, 480, 511, 512, 639, 640,
-    767, 768, 769, 1023, 1024, 1025, 1525, 1526, 1527
-# define MAX_SIZE 1527u
+    767, 768, 769, 1023, 1024, 1025, 1525, 1526, 1527, 
+    2024, 2025, 2525, 2526, 2527, 3000, 4000, 5000
+# define MAX_SIZE 5000u
 #endif
 };
 

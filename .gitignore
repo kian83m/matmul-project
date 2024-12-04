@@ -3,3 +3,4 @@ build*
 *.pdf
 *.o
 matmul-*
+*.txt

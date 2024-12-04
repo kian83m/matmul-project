@@ -15,10 +15,10 @@ def make_plot(runs):
         plt.plot(df['size'], df['mflop'] / 1e3, label=arg)
     plt.xlabel('Dimension')
     plt.ylabel('Gflop/s')
-    df = pd.read_csv("timing-mine.csv")
-    print("min: ", min(df["mflop"]))
-    print("max: ", max(df["mflop"]))
-    print("avg: ", df["mflop"].mean())
+    # df = pd.read_csv("timing-mine.csv")
+    # print("min: ", min(df["mflop"]))
+    # print("max: ", max(df["mflop"]))
+    # print("avg: ", df["mflop"].mean())
 
 def show(runs):
     "Show plot of timing runs (for interactive use)"

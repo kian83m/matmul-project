@@ -41,10 +41,13 @@ matmul-basic: $(OBJS) dgemm_basic.o
 matmul-gpu: $(OBJS) dgemm_gpu.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS)
 
+matmul-cublass: $(OBJS) dgemm_cublass.o
+	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) $(LIBcuBLAS)
+
 # --
 # Rules to build object files
 
-matmul.o: matmul.c
+matmul.o: matmul.cpp
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $<
 
 %.o: %.c
@@ -65,6 +68,10 @@ dgemm_veclib.o: dgemm_blas.c
 
 dgemm_gpu.o: dgemm_gpu.cu
 	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
+
+dgemm_cublass.o: dgemm_cublass.cpp
+	$(NVCC) -o $@ -c $(NVCCFLAGS) $<
+
 # ---
 # Rules for building timing CSV outputs
 
@@ -83,10 +90,10 @@ plot:
 
 # ---
 
-.PHONY: run-matmul-mine
-run-matmul-mine: matmul-mine
-	./matmul-mine
-	$(PYTHON) plotter.py mine
+# .PHONY: run-matmul-mine
+# run-matmul-mine: matmul-mine
+# 	./matmul-mine
+# 	$(PYTHON) plotter.py mine
 
 .PHONY:	clean realclean 
 clean:
