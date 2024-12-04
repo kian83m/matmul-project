@@ -1,0 +1,30 @@
+# Versions to build
+BUILDS=basic blocked gpu
+
+# C and Fortran compilers
+CC=CC
+FC=ftn
+LD=CC
+
+NVCC=nvcc
+NVCCFLAGS=-DCUDA
+
+# Python (for plotting)
+PYTHON=python3
+
+# Compiler optimization flags.  You will definitely want to play with these!
+OPTFLAGS = -O3 
+CFLAGS = 
+FFLAGS =
+LDFLAGS = -fopenmp
+
+# Add -DDEBUG_RUN to CPPFLAGS to cut down on the cases.
+CPPFLAGS = "-DCOMPILER=\"$(CC)\"" "-DFLAGS=\"$(OPTFLAGS)\""
+
+# Compile a C version (using basic_dgemm.c, in this case):
+LIBS = -lm 
+OBJS = matmul.o
+
+# Libraries and include files for BLAS
+LIBBLAS=`pkg-config --libs openblas`
+INCBLAS=`pkg-config --cflags openblas`

@@ -5,7 +5,7 @@
 # to play with, you can put them in an appropriately-named Makefile.in.
 # For example, the default setup has a Makefile.in.icc and Makefile.in.gcc.
 
-PLATFORM=icx
+PLATFORM=cuda
 
 include Makefile.in.$(PLATFORM)
 DRIVERS=$(addprefix matmul-,$(BUILDS))
@@ -20,11 +20,6 @@ all:	$(DRIVERS)
 matmul-%: $(OBJS) dgemm_%.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS)
 
-# matmul-%: $(OBJS) dgemm_%.o
-#     $(CC) -o $@ $^ $(LDFLAGS) $(LIBS)
-
-# matmul-f2c: $(OBJS) dgemm_f2c.o dgemm_f2c_desc.o fdgemm.o
-# 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) 
 matmul-f2c: $(OBJS) dgemm_f2c.o dgemm_f2c_desc.o fdgemm.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) -lifcore -lifport
 
@@ -41,6 +36,9 @@ matmul-mine: $(OBJS) dgemm_mine.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) 
 
 matmul-basic: $(OBJS) dgemm_basic.o
+	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+matmul-gpu: $(OBJS) dgemm_gpu.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 # --
@@ -64,6 +62,9 @@ dgemm_mkl.o: dgemm_blas.c
 dgemm_veclib.o: dgemm_blas.c
 	clang -o $@ -c $(CFLAGS) $(CPPFLAGS) -DOSX_ACCELERATE $< 
 
+
+dgemm_gpu.o: dgemm_gpu.cu
+	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
 # ---
 # Rules for building timing CSV outputs
 
@@ -71,7 +72,7 @@ dgemm_veclib.o: dgemm_blas.c
 run:    $(TIMINGS)
 
 timing-%.csv: matmul-%
-	OPENMP_NUM_THREADS=1 ./matmul-$*
+	./matmul-$*
 
 # ---
 #  Rules for plotting
@@ -86,14 +87,6 @@ plot:
 run-matmul-mine: matmul-mine
 	./matmul-mine
 	$(PYTHON) plotter.py mine
-
-
-run-advixe-mine: matmul-mine
-	make realclean
-	rm -rf intelAnalysis/*
-	make run-matmul-mine
-	advixe-cl -collect survey -project-dir intelAnalysis -- ./matmul-mine && advixe-cl -collect tripcounts -project-dir intelAnalysis -- ./matmul-mine && advixe-cl -collect roofline -project-dir intelAnalysis -- ./matmul-mine && advixe-cl -report roofline -project-dir intelAnalysis/
-
 
 .PHONY:	clean realclean 
 clean:
