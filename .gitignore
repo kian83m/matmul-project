@@ -2,3 +2,4 @@ build*
 *.csv
 *.pdf
 *.o
+matmul-*
