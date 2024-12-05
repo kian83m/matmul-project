@@ -45,9 +45,10 @@ void square_dgemm(int M, const double *A, const double *B, double *C)
     const double alpha = 1.0;
     const double beta = 0.0;
 
-    // Since matrices are in row-major order, we need to transpose the matrices to use cublasDgemm
+    // Since matrices are in row-major order, the program sees A^T, B^T, and stores C^T. 
+    // Hence, switch the sequence of d_A and d_B as input such that B^T * A^T = C^T
     status = cublasDgemm(handle,
-                         CUBLAS_OP_T, CUBLAS_OP_T,
+                         CUBLAS_OP_N, CUBLAS_OP_N,
                          M, M, M,
                          &alpha,
                          d_B, M,

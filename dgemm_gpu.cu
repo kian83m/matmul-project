@@ -5,7 +5,7 @@ const char *dgemm_desc = "Our fancy blazing fast gpu dgemm";
 #include <stdio.h>
 #include <math.h>
 
-#define BLOCKSIZE 16
+#define BLOCKSIZE 32
 #define CEIL_DIV(a, b) ((a + b - 1) / b)
 
 __global__
