@@ -1,5 +1,5 @@
 # Versions to build
-BUILDS=basic blocked gpu
+BUILDS=cublas gpu_basic gpu
 
 # C and Fortran compilers
 CC=CC
@@ -28,3 +28,5 @@ OBJS = matmul.o
 # Libraries and include files for BLAS
 LIBBLAS=`pkg-config --libs openblas`
 INCBLAS=`pkg-config --cflags openblas`
+
+LIBcuBLAS=-lcublas -lcudart

@@ -9,7 +9,7 @@
     Jason Riedy
 */
 
-#define DEBUG_RUN
+// #define DEBUG_RUN
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -56,8 +56,9 @@ const int test_sizes[] = {
 // # define MAX_SIZE 208u
 #else
     255, 256, 257, 319, 320, 321, 417, 479, 480, 511, 512, 639, 640,
-    767, 768, 769, 1023, 1024, 1025, 1525, 1526, 1527
-# define MAX_SIZE 1527u
+    767, 768, 769, 1023, 1024, 1025, 1525, 1526, 1527,
+    // 2024, 2025, 2525, 2526, 2527, 3000, 4000, 5000
+# define MAX_SIZE 5000u
 #endif
 };
 
@@ -115,13 +116,16 @@ void diff_dgemm(const int M, const double *A, const double *B, double *C)
             double dotprod = 0;
             double errorbound = 0;
             for (int k = 0; k < M; ++k) {
-                double prod = A[k*M + i] * B[j*M + k];
+                // double prod = A[k*M + i] * B[j*M + k];
+                double prod = A[i*M + k] * B[k*M + j];
                 dotprod += prod;
                 errorbound += fabs(prod);
             }
-            fprintf(fp_our,  " %g", C[j*M+i]);
+            // fprintf(fp_our,  " %g", C[j*M+i]);
+            fprintf(fp_our,  " %g", C[i*M+j]);
             fprintf(fp_ref,  " %g", dotprod);
-            fprintf(fp_diff, " % 0.0e", C[j*M+i]-dotprod);
+            // fprintf(fp_diff, " % 0.0e", C[j*M+i]-dotprod);
+            fprintf(fp_diff, " % 0.0e", C[i*M+j]-dotprod);
         }
         fprintf(fp_our, "\n");
         fprintf(fp_ref, "\n");
@@ -162,12 +166,17 @@ void validate_dgemm(const int M, const double *A, const double *B, double *C)
             double dotprod = 0;
             double errorbound = 0;
             for (int k = 0; k < M; ++k) {
-                double prod = A[k*M + i] * B[j*M + k];
+                // original column major order 
+                // double prod = A[k*M + i] * B[j*M + k];
+
+                // row major order
+                double prod = A[i*M + k] * B[k*M + j];
                 dotprod += prod;
                 errorbound += fabs(prod);
             }
             errorbound *= (M * DBL_EPSILON);
-            double err = fabs(C[j*M + i] - dotprod);
+            // double err = fabs(C[j*M + i] - dotprod);
+            double err = fabs(C[i*M + j] - dotprod);
             if (err > 3*errorbound) {
                 fprintf(stderr, "Matrix multiply failed.\n");
                 fprintf(stderr, "C(%d,%d) should be %lg, was %lg\n", i, j,

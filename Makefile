@@ -41,10 +41,16 @@ matmul-basic: $(OBJS) dgemm_basic.o
 matmul-gpu: $(OBJS) dgemm_gpu.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS)
 
+matmul-gpu_basic: $(OBJS) dgemm_gpu_basic.o
+	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+matmul-cublas: $(OBJS) dgemm_cublas.o
+	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) $(LIBcuBLAS)
+
 # --
 # Rules to build object files
 
-matmul.o: matmul.c
+matmul.o: matmul.cpp
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $<
 
 %.o: %.c
@@ -64,6 +70,12 @@ dgemm_veclib.o: dgemm_blas.c
 
 
 dgemm_gpu.o: dgemm_gpu.cu
+	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
+
+dgemm_cublas.o: dgemm_cublas.cpp
+	$(NVCC) -o $@ -c $(NVCCFLAGS) $<
+
+dgemm_gpu_basic.o: dgemm_gpu_basic.cu
 	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
 # ---
 # Rules for building timing CSV outputs

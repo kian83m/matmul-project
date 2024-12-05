@@ -1,0 +1,35 @@
+# Versions to build
+BUILDS=basic blocked f2c blas
+
+# C and Fortran compilers
+CC=icx
+FC=ifx
+LD=icx 
+
+# Python (for plotting)
+PYTHON=python3
+
+# Compiler optimization flags. Adjust these for Intel compilers.
+#OPTFLAGS = -O3 -xHost -fp-model fast
+#CFLAGS = 
+#FFLAGS = -nofor_main  # Ensure the Fortran compiler does not define its own main
+#LDFLAGS = -qopenmp # -fopenmp
+
+#OPTFLAGS = -O3 -xCORE-AVX512 -qopenmp -fp-model fast -fno-alias -falign-functions=64 
+#CFLAGS = -O3 -xCORE-AVX512 -qopenmp 
+FFLAGS = -nofor_main
+LDFLAGS = -qopenmp
+
+OPTFLAGS = -O3 -qopenmp -fp-model fast -fno-alias -ffast-math -fvectorize -qopt-zmm-usage=high 
+CFLAGS = -O3 -qopenmp -fp-model fast -fno-alias -ffast-math -fvectorize -qopt-zmm-usage=high 
+
+# Add -DDEBUG_RUN to CPPFLAGS to cut down on the cases.
+CPPFLAGS = "-DCOMPILER=\"$(CC)\"" "-DFLAGS=\"$(OPTFLAGS)\""
+
+# Compile a C version (using basic_dgemm.c, in this case):
+LIBS = -lm
+OBJS = matmul.o
+
+# Libraries and include files for Intel MKL (Intel's optimized math libraries)
+LIBBLAS=-L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_core -lmkl_intel_thread -liomp5 -lpthread -lm -ldl
+INCBLAS=-I${MKLROOT}/include

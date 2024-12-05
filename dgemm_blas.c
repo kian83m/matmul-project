@@ -3,14 +3,18 @@
 #elif defined(__ICC) || defined(__INTEL_COMPILER)
 #include <mkl_cblas.h>
 #elif defined(__GNUC__) || defined(__GNUG__)
-#include <mkl_cblas.h>
+// #include <mkl_cblas.h>
 #endif
+#include <mkl_cblas.h>
 
 const char *dgemm_desc = "System CBLAS dgemm.";
 
 void square_dgemm(const int M, double *A, double *B, double *C)
 {
-    cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans,
+    // cblas_dgemm(CblasColMajor, CblasNoTrans, CblasNoTrans,
+    //             M, M, M,
+    //             1.0, A, M, B, M, 0.0, C, M);
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
                 M, M, M,
                 1.0, A, M, B, M, 0.0, C, M);
 }
