@@ -50,8 +50,10 @@ matmul-cublas: $(OBJS) dgemm_cublas.o
 # --
 # Rules to build object files
 
-matmul.o: matmul.cpp
-	$(CC) -c $(CFLAGS) $(CPPFLAGS) $<
+# matmul.o: matmul.cpp
+# 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $<
+matmul.o: matmul.cu
+	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
 
 %.o: %.c
 	$(CC) -c $(CFLAGS) $(OPTFLAGS) $(CPPFLAGS) $<
