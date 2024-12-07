@@ -1,5 +1,5 @@
 # Versions to build
-BUILDS=cublas gpu_basic gpu
+BUILDS=gpu cublas gpu_basic
 
 # C and Fortran compilers
 CC=CC
