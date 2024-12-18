@@ -38,7 +38,7 @@ matmul-mine: $(OBJS) dgemm_mine.o
 matmul-basic: $(OBJS) dgemm_basic.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS)
 
-matmul-gpu: $(OBJS) dgemm_gpu.o
+matmul-gpu-CB: $(OBJS) dgemm_gpu-CB.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 matmul-gpu_basic: $(OBJS) dgemm_gpu_basic.o
@@ -46,6 +46,13 @@ matmul-gpu_basic: $(OBJS) dgemm_gpu_basic.o
 
 matmul-cublas: $(OBJS) dgemm_cublas.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) $(LIBcuBLAS)
+
+matmul-2D-blocking: $(OBJS) dgemm_gpu_2D-block.o
+	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) $(LIBcuBLAS)
+
+matmul-vectorize: $(OBJS) dgemm_gpu_vectorize.o
+	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) $(LIBcuBLAS)
+
 
 # --
 # Rules to build object files
@@ -71,7 +78,13 @@ dgemm_veclib.o: dgemm_blas.c
 	clang -o $@ -c $(CFLAGS) $(CPPFLAGS) -DOSX_ACCELERATE $< 
 
 
-dgemm_gpu.o: dgemm_gpu.cu
+dgemm_gpu-CB.o: dgemm_gpu_cache-blocking.cu
+	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
+
+dgemm_gpu_2D-block.o: dgemm_gpu_2D-block.cu
+	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
+
+dgemm_gpu_vectorize.o: dgemm_gpu_vectorize_access.cu
 	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
 
 dgemm_cublas.o: dgemm_cublas.cpp

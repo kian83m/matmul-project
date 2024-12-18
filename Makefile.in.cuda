@@ -1,5 +1,7 @@
 # Versions to build
-BUILDS=gpu cublas gpu_basic
+#BUILDS=gpu-CB cublas 2D-blocking vectorize
+BUILDS=vectorize
+
 
 # C and Fortran compilers
 CC=CC

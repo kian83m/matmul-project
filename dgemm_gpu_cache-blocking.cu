@@ -8,21 +8,20 @@ const char *dgemm_desc = "Our fancy blazing fast cornell university blas gpu dge
 #define BLOCKSIZE 32
 #define CEIL_DIV(a, b) ((a + b - 1) / b)
 
-__global__
-void square_dgemm_kernel(const int M, const double *A0, const double *B0, double *C0)
+__global__ void square_dgemm_kernel(const int M, const double *A0, const double *B0, double *C0)
 {
     // For each thread block, we can fit tiles of size 32 by 32 of A, B
     // (16KB in total) to the shared memory
     // Can fit 164/17 = 9 blocks on each SM
-    // No need to store a tile of C! 
-    // Each thread can hold the cumulative sum as local variable 
+    // No need to store a tile of C!
+    // Each thread can hold the cumulative sum as local variable
     // and update C0 once after all computation.
     // The only tunable parameter is BLOCKSIZE for now
-    __shared__ double tile_A [BLOCKSIZE][BLOCKSIZE];
-    __shared__ double tile_B [BLOCKSIZE][BLOCKSIZE];
+    __shared__ double tile_A[BLOCKSIZE][BLOCKSIZE];
+    __shared__ double tile_B[BLOCKSIZE][BLOCKSIZE];
     // __shared__ double tile_C [BLOCKSIZE][BLOCKSIZE];
 
-    // threadIdx ranges from 0 to BLOCKSIZE^2 - 1, 
+    // threadIdx ranges from 0 to BLOCKSIZE^2 - 1,
     // so threadRow and threadCol ranges from 0 to BLOCKSIZE - 1
     // and threads of consecutive threadIdx.x have same threadRow and consecutive threadCol
     const int threadRow = threadIdx.x / BLOCKSIZE;
@@ -31,28 +30,31 @@ void square_dgemm_kernel(const int M, const double *A0, const double *B0, double
     // blockRow, blockCol ranges from 0 to ceil(M / BLOCKSIZE) - 1
     const int blockRow = blockIdx.x;
     const int blockCol = blockIdx.y;
-    
-    // (cRow, cCol) is the element this thread is responsible for in C0. 
+
+    // (cRow, cCol) is the element this thread is responsible for in C0.
     const int cRow = blockRow * BLOCKSIZE + threadRow;
     const int cCol = blockCol * BLOCKSIZE + threadCol;
-    
-    //each thread setting an element to 0 in C, then __syncthreads(); row major order
-    // tile_C[threadRow][threadCol] = 0; 
-    // __syncthreads();
+
+    // each thread setting an element to 0 in C, then __syncthreads(); row major order
+    //  tile_C[threadRow][threadCol] = 0;
+    //  __syncthreads();
 
     double tmp = 0.0;
-    
-    for(int tileIdx = 0; tileIdx < M; tileIdx += BLOCKSIZE){
-        //each thread loads an element from A, B
-        //for the incomplete final tiles, load first few rows of A and first few columns of B
-        //each thread loads A[cRow][tileIdx + threadCol] and B[tileIdx + threadRow][cCol]
+
+    for (int tileIdx = 0; tileIdx < M; tileIdx += BLOCKSIZE)
+    {
+        // each thread loads an element from A, B
+        // for the incomplete final tiles, load first few rows of A and first few columns of B
+        // each thread loads A[cRow][tileIdx + threadCol] and B[tileIdx + threadRow][cCol]
         double aVal = 0.0, bVal = 0.0;
         // Load A if in range
-        if (cRow < M && (tileIdx + threadCol) < M) {
+        if (cRow < M && (tileIdx + threadCol) < M)
+        {
             aVal = A0[cRow * M + (tileIdx + threadCol)];
         }
         // Load B if in range, not memory coalesced indexing
-        if (cCol < M && (tileIdx + threadRow) < M) {
+        if (cCol < M && (tileIdx + threadRow) < M)
+        {
             bVal = B0[(tileIdx + threadRow) * M + cCol];
         }
         tile_A[threadRow][threadCol] = aVal;
@@ -60,10 +62,11 @@ void square_dgemm_kernel(const int M, const double *A0, const double *B0, double
         // Synchronize to ensure all threads have loaded and tile is fully updated
         __syncthreads();
         // C[cRow][cCol] = \sum A[cRow][:] * B[:][cCol]
-        // In each tile, each thread computes 
-        // C[cRow][cCol] += \sum A[cRow][tileIdx : tileIdx + BLOCKSIZE - 1] * 
+        // In each tile, each thread computes
+        // C[cRow][cCol] += \sum A[cRow][tileIdx : tileIdx + BLOCKSIZE - 1] *
         // B[tileIdx : tileIdx + BLOCKSIZE - 1][cCol]
-        for(int k = 0; k < BLOCKSIZE; k++){
+        for (int k = 0; k < BLOCKSIZE; k++)
+        {
             tmp += tile_A[threadRow][k] * tile_B[k][threadCol];
         }
         // corresponds to C0[cRow][cCol]
@@ -75,7 +78,8 @@ void square_dgemm_kernel(const int M, const double *A0, const double *B0, double
     // __syncthreads();
     // C0[cRow * M + cCol] = tile_C[threadRow][threadCol];
     // Write the result back to C if within bounds
-    if (cRow < M && cCol < M) {
+    if (cRow < M && cCol < M)
+    {
         C0[cRow * M + cCol] = tmp;
     }
     // // threads with neighboring threadIdx access same row in A and neighboring cols in B
