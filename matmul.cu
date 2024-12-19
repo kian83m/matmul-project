@@ -5,9 +5,6 @@
 #include <math.h>
 #include <omp.h>
 #include <cuda_runtime.h>
-#include <stdio.h>
-#include <math.h>
-#include <float.h>
 
 #ifndef COMPILER
 #define COMPILER "unknown"
@@ -16,89 +13,106 @@
 #define FLAGS "unknown"
 #endif
 
-// #define DEBUG_RUN
-
+extern void batched_gemm_kernel(const int M, const int N, const double **A0, const double **B0, double **C0);
 extern const char *dgemm_desc;
-// extern void square_dgemm();
-void square_dgemm(int M, const double *A, const double *B, double *C);
 
-/*
-  We try to run enough iterations to get reasonable timings.  The matrices
-  are multiplied at least MIN_RUNS times.  If that doesn't take MIN_SECS
-  seconds, then we double the number of iterations and try again.
-
-  You may want to modify these to speed debugging...
-*/
 #define MIN_RUNS 4
-/* #define MIN_SECS 1.0 */
 #define MIN_SECS 0.25
 
-/*
-  Note the strange sizes...  You'll see some interesting effects
-  around some of the powers-of-two.
-*/
 const int test_sizes[] = {
-    // 80, 96, 112, 128, 144, 192, 200, 208,
     31,
     32,
     96,
     97,
     127,
     128,
-    129,
-    191,
-    192,
-    229,
-#if defined(DEBUG_RUN)
-#define MAX_SIZE 229u
-// # define MAX_SIZE 208u
-#else
-    255, 256, 257, 319, 320, 321, 417, 479, 480, 511, 512, 639, 640,
-    767, 768, 769, 1023, 1024, 1025, 1525, 1526, 1527,
-    2024, 2025, 2525, 2526, 2527, 3000, 4000, 5000
-#define MAX_SIZE 5000u
+    129
+#if !defined(DEBUG_RUN)
+    ,191,192,229,
+    255,256,257,
+    319,320,321,
+    // 417,479,480,
+    511,512,639,640,
+    // 767,768,769,
+    1023,1024,1025,
+    // 1525,1526,1527,
+    2024,2025,2525,
+    // 2526,2527,
+    3000,4000,5000
 #endif
 };
 
 #define N_SIZES (sizeof(test_sizes) / sizeof(int))
+#define MAX_SIZE 5000u
+#define DEFAULT_BATCH_SIZE 15
 
-/* --
- * Initialize A to random numbers (A is MAX_SIZE * MAX_SIZE)
- */
 void matrix_init(double *A)
 {
     for (int i = 0; i < MAX_SIZE * MAX_SIZE; ++i)
         A[i] = drand48();
 }
 
-/* --
- * Zero out C (which is MAX_SIZE * MAX_SIZE)
- */
 void matrix_clear(double *C)
 {
     memset(C, 0, MAX_SIZE * MAX_SIZE * sizeof(double));
 }
 
-/* --
- * Check that C = A*B to within roundoff error.
- *
- * We use the fact that dot products satisfy the error bound
- *
- *   float(sum a_i * b_i) = sum a_i * b_i * (1 + delta_i)
- *
- * where delta_i <= n * epsilon.  In order to check your matrix
- * multiply, we compute each element in turn and make sure that
- * your product is within three times the given error bound.
- * We make it three times because there are three sources of
- * error:
- *
- *  - the roundoff error in your multiply
- *  - the roundoff error in our multiply
- *  - the roundoff error in computing the error bound
- *
- *  That last source of error is not so significant, but that's a
- *  story for another day.
- */
+// GPU kernel to compute ground truth
+__global__ void gpu_batched_mmm_ground_truth(
+    double **A_list,
+    double **B_list,
+    double **C_list, int M, int N)
+{
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    int i = blockIdx.z; // which matrix in the batch
+    if (i < N && row < M && col < M)
+    {
+        const double *A = A_list[i];
+        const double *B = B_list[i];
+        double *C = C_list[i];
+
+        double sum = 0.0;
+        for (int k = 0; k < M; ++k)
+        {
+            sum += A[row * M + k] * B[k * M + col];
+        }
+        C[row * M + col] = sum;
+    }
+}
+
+// CUDA kernel to calculate error bounds
+__global__ void gpu_batched_calculate_error_bound(
+    double **A_list,
+    double **B_list,
+    double **C_ref_list,
+    double *error_bounds_list,
+    int M, int N, double epsilon)
+{
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int i = blockIdx.z;
+
+    if (i < N && row < M && col < M)
+    {
+        const double *A = A_list[i];
+        const double *B = B_list[i];
+
+        double dotprod = 0.0;
+        double errorbound = 0.0;
+
+        for (int k = 0; k < M; ++k)
+        {
+            double prod = A[row * M + k] * B[k * M + col];
+            dotprod += prod;
+            errorbound += fabs(prod);
+        }
+
+        error_bounds_list[i * M * M + row * M + col] = errorbound * (M * epsilon);
+    }
+}
+
 void diff_dgemm(const int M, const double *C_user, const double *C_ground_truth)
 {
     FILE *fp_our = fopen("dump_our.txt", "w");
@@ -132,218 +146,170 @@ void diff_dgemm(const int M, const double *C_user, const double *C_ground_truth)
     fclose(fp_ref);
     fclose(fp_our);
 }
-// void diff_dgemm(const int M, const double *A, const double *B, double *C)
-// {
-//     FILE* fp_our  = fopen("dump_our.txt", "w");
-//     FILE* fp_ref  = fopen("dump_ref.txt", "w");
-//     FILE* fp_diff = fopen("dump_diff.txt", "w");
-//     matrix_clear(C);
-//     square_dgemm(M, A, B, C);
-//     for (int i = 0; i < M; ++i) {
-//         for (int j = 0; j < M; ++j) {
-//             double dotprod = 0;
-//             for (int k = 0; k < M; ++k) {
-//                 // double prod = A[k*M + i] * B[j*M + k];
-//                 double prod = A[i*M + k] * B[k*M + j];
-//                 dotprod += prod;
-//             }
-//             // fprintf(fp_our,  " %g", C[j*M+i]);
-//             fprintf(fp_our,  " %g", C[i*M+j]);
-//             fprintf(fp_ref,  " %g", dotprod);
-//             // fprintf(fp_diff, " % 0.0e", C[j*M+i]-dotprod);
-//             fprintf(fp_diff, " % 0.0e", C[i*M+j]-dotprod);
-//         }
-//         fprintf(fp_our, "\n");
-//         fprintf(fp_ref, "\n");
-//         fprintf(fp_diff, "\n");
-//     }
-//     fclose(fp_diff);
-//     fclose(fp_ref);
-//     fclose(fp_our);
-// }
 
-// GPU kernel to compute matrix multiplication (C = A * B)
-__global__ void gpu_mmm_ground_truth(const double *A, const double *B, double *C, int M)
+void diff_batched_dgemm(const int M, const int N, double **C, double **C_ref)
 {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    FILE *fp_our = fopen("dump_our_batched.txt", "w");
+    FILE *fp_ref = fopen("dump_ref_batched.txt", "w");
+    FILE *fp_diff = fopen("dump_diff_batched.txt", "w");
 
-    if (row >= M || col >= M)
-        return;
-
-    double sum = 0.0;
-    for (int k = 0; k < M; ++k)
+    if (!fp_our || !fp_ref || !fp_diff)
     {
-        sum += A[row * M + k] * B[k * M + col];
+        fprintf(stderr, "Error opening output files in diff_batched_dgemm.\n");
+        exit(-1);
     }
 
-    C[row * M + col] = sum;
-}
-
-// CUDA kernel to calculate error bounds and validate results
-__global__ void calculate_error_bound(
-    const double *A, const double *B, const double *C, double *error_bounds,
-    int M, double epsilon)
-{
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (row >= M || col >= M)
-        return;
-
-    double dotprod = 0.0;
-    double errorbound = 0.0;
-
-    for (int k = 0; k < M; ++k)
+    for (int i = 0; i < N; i++)
     {
-        double prod = A[row * M + k] * B[k * M + col];
-        dotprod += prod;
-        errorbound += fabs(prod);
+        fprintf(fp_our, "Matrix %d\n", i);
+        fprintf(fp_ref, "Matrix %d\n", i);
+        fprintf(fp_diff, "Matrix %d\n", i);
+        for (int r = 0; r < M; r++)
+        {
+            for (int c = 0; c < M; c++)
+            {
+                double user_val = C[i][r * M + c];
+                double ref_val = C_ref[i][r * M + c];
+                double diff = user_val - ref_val;
+
+                fprintf(fp_our, " %g", user_val);
+                fprintf(fp_ref, " %g", ref_val);
+                fprintf(fp_diff, " % 0.0e", diff);
+            }
+            fprintf(fp_our, "\n");
+            fprintf(fp_ref, "\n");
+            fprintf(fp_diff, "\n");
+        }
     }
 
-    error_bounds[row * M + col] = errorbound * (M * epsilon);
+    fclose(fp_diff);
+    fclose(fp_ref);
+    fclose(fp_our);
 }
 
-// void validate_dgemm(int M, const double* A, const double* B, double* C) {
-//     double *d_A, *d_B, *d_C, *d_error_bounds;
-//     size_t size = M * M * sizeof(double);
-
-//     // Allocate device memory
-//     cudaMalloc((void**)&d_A, size);
-//     cudaMalloc((void**)&d_B, size);
-//     cudaMalloc((void**)&d_C, size);
-//     cudaMalloc((void**)&d_error_bounds, size);
-
-//     // Copy matrices from host to device
-//     cudaMemcpy(d_A, A, size, cudaMemcpyHostToDevice);
-//     cudaMemcpy(d_B, B, size, cudaMemcpyHostToDevice);
-
-//     // Compute ground truth using GPU
-//     gpu_mmm_ground_truth<<<dim3((M + 15) / 16, (M + 15) / 16), dim3(16, 16)>>>(d_A, d_B, d_C, M);
-//     cudaDeviceSynchronize();
-
-//     // Launch error bound kernel
-//     calculate_error_bound<<<dim3((M + 15) / 16, (M + 15) / 16), dim3(16, 16)>>>(d_A, d_B, d_C, d_error_bounds, M, DBL_EPSILON);
-//     cudaDeviceSynchronize();
-
-//     // Validation
-//     for(int row = 0; row < M; row++){
-//         for(int col = 0; col < M; col++){
-//             double computed_value = d_C[row * M + col];
-//             double dotprod = C[row * M + col];
-//             double err = fabs(computed_value - dotprod);
-//             if (err > 3.0 * d_error_bounds[row * M + col]) {
-//                 printf("Validation failed at (%d, %d):\n", row, col);
-//                 printf("Computed: %g, Expected: %g, Error: %g, Bound: %g\n",
-//                     computed_value, dotprod, err, 3.0 * d_error_bounds[row * M + col]);
-//                 diff_dgemm(M, A, B, C);
-//             }
-//         }
-//     }
-
-//     // Copy results back to host
-//     cudaMemcpy(C, d_C, size, cudaMemcpyDeviceToHost);
-
-//     // Free device memory
-//     cudaFree(d_A);
-//     cudaFree(d_B);
-//     cudaFree(d_C);
-//     cudaFree(d_error_bounds);
-// }
-
-void validate_dgemm(int M, const double *A, const double *B, double *C)
+void validate_batched_gemm(int M, int N, double **A, double **B, double **C)
 {
-    // First, compute C using your own implementation
-    matrix_clear(C);
-    square_dgemm(M, A, B, C);
+    // Clear C and run the user's batched kernel
+    for (int i = 0; i < N; i++)
+        memset(C[i], 0, M * M * sizeof(double));
+    batched_gemm_kernel(M, N, (const double **)A, (const double **)B, C);
 
-    double *d_A, *d_B, *d_C_ground_truth, *d_error_bounds;
-    size_t size = M * M * sizeof(double);
+    double **C_ref = (double **)malloc(N * sizeof(double *));
+    for (int i = 0; i < N; i++)
+        C_ref[i] = (double *)malloc(M * M * sizeof(double));
 
-    // Allocate device memory
-    cudaMalloc((void **)&d_A, size);
-    cudaMalloc((void **)&d_B, size);
-    cudaMalloc((void **)&d_C_ground_truth, size);
-    cudaMalloc((void **)&d_error_bounds, size);
+    double **h_A_list = (double **)malloc(N * sizeof(double *));
+    double **h_B_list = (double **)malloc(N * sizeof(double *));
+    double **h_C_ref_list = (double **)malloc(N * sizeof(double *));
 
-    // Copy matrices from host to device
-    cudaMemcpy(d_A, A, size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, B, size, cudaMemcpyHostToDevice);
+    size_t mat_size = M * M * sizeof(double);
 
-    // Compute ground truth using GPU
-    dim3 threadsPerBlock(16, 16);
+    double *d_A_data, *d_B_data, *d_C_ref_data;
+    cudaMalloc((void **)&d_A_data, N * mat_size);
+    cudaMalloc((void **)&d_B_data, N * mat_size);
+    cudaMalloc((void **)&d_C_ref_data, N * mat_size);
+
+    for (int i = 0; i < N; i++)
+    {
+        cudaMemcpy(d_A_data + i * M * M, A[i], mat_size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_B_data + i * M * M, B[i], mat_size, cudaMemcpyHostToDevice);
+    }
+
+    double **d_A_array, **d_B_array, **d_C_ref_array;
+    cudaMalloc((void **)&d_A_array, N * sizeof(double *));
+    cudaMalloc((void **)&d_B_array, N * sizeof(double *));
+    cudaMalloc((void **)&d_C_ref_array, N * sizeof(double *));
+
+    for (int i = 0; i < N; i++)
+    {
+        h_A_list[i] = d_A_data + i * M * M;
+        h_B_list[i] = d_B_data + i * M * M;
+        h_C_ref_list[i] = d_C_ref_data + i * M * M;
+    }
+
+    cudaMemcpy(d_A_array, h_A_list, N * sizeof(double *), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B_array, h_B_list, N * sizeof(double *), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_C_ref_array, h_C_ref_list, N * sizeof(double *), cudaMemcpyHostToDevice);
+
+    dim3 threadsPerBlock(16,16);
     dim3 numBlocks((M + threadsPerBlock.x - 1) / threadsPerBlock.x,
-                   (M + threadsPerBlock.y - 1) / threadsPerBlock.y);
+                   (M + threadsPerBlock.y - 1) / threadsPerBlock.y,
+                   N);
 
-    gpu_mmm_ground_truth<<<numBlocks, threadsPerBlock>>>(d_A, d_B, d_C_ground_truth, M);
+    gpu_batched_mmm_ground_truth<<<numBlocks, threadsPerBlock>>>(d_A_array, d_B_array, d_C_ref_array, M, N);
     cudaDeviceSynchronize();
 
-    // Launch error bound kernel
-    calculate_error_bound<<<numBlocks, threadsPerBlock>>>(d_A, d_B, d_C_ground_truth, d_error_bounds, M, DBL_EPSILON);
+    double *d_error_bounds_list;
+    cudaMalloc((void **)&d_error_bounds_list, N * mat_size);
+    double *h_error_bounds_list = (double *)malloc(N * mat_size);
+
+    gpu_batched_calculate_error_bound<<<numBlocks, threadsPerBlock>>>(d_A_array, d_B_array, d_C_ref_array, d_error_bounds_list, M, N, DBL_EPSILON);
     cudaDeviceSynchronize();
 
-    // Allocate host memory to receive data from device
-    double *h_C_ground_truth = (double *)malloc(size);
-    double *h_error_bounds = (double *)malloc(size);
-
-    // Copy results from device to host
-    cudaMemcpy(h_C_ground_truth, d_C_ground_truth, size, cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_error_bounds, d_error_bounds, size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_error_bounds_list, d_error_bounds_list, N * mat_size, cudaMemcpyDeviceToHost);
+    for (int i = 0; i < N; i++)
+        cudaMemcpy(C_ref[i], h_C_ref_list[i], mat_size, cudaMemcpyDeviceToHost);
 
     // Validation
-    for (int row = 0; row < M; row++)
+    for (int i = 0; i < N; i++)
     {
-        for (int col = 0; col < M; col++)
+        for (int row = 0; row < M; row++)
         {
-            double computed_value = h_C_ground_truth[row * M + col]; // Ground truth
-            double user_value = C[row * M + col];                    // Your computed value
-            double err = fabs(computed_value - user_value);
-            double error_bound = h_error_bounds[row * M + col];
-            if (err > 3.0 * error_bound)
+            for (int col = 0; col < M; col++)
             {
-                printf("Validation failed at (%d, %d):\n", row, col);
-                printf("Computed: %g, Expected: %g, Error: %g, Bound: %g\n",
-                       user_value, computed_value, err, 3.0 * error_bound);
-                // diff_dgemm(M, A, B, C);
-                diff_dgemm(M, C, h_C_ground_truth);
-                exit(-1);
+                double computed_value = C_ref[i][row * M + col];
+                double user_value = C[i][row * M + col];
+                double err = fabs(computed_value - user_value);
+                double error_bound = h_error_bounds_list[i * M * M + row * M + col];
+                if (err > 3.0 * error_bound)
+                {
+                    printf("Validation failed for batch %d at (%d, %d):\n", i, row, col);
+                    printf("Computed: %g, Expected: %g, Error: %g, Bound: %g\n",
+                           user_value, computed_value, err, 3.0 * error_bound);
+                    diff_batched_dgemm(M, N, C, C_ref);
+                    exit(-1);
+                }
             }
         }
     }
 
-    // Free host and device memory
-    free(h_C_ground_truth);
-    free(h_error_bounds);
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C_ground_truth);
-    cudaFree(d_error_bounds);
+    // Cleanup
+    free(h_A_list);
+    free(h_B_list);
+    free(h_C_ref_list);
+    for (int i = 0; i < N; i++)
+        free(C_ref[i]);
+    free(C_ref);
+    free(h_error_bounds_list);
+
+    cudaFree(d_A_data);
+    cudaFree(d_B_data);
+    cudaFree(d_C_ref_data);
+    cudaFree(d_A_array);
+    cudaFree(d_B_array);
+    cudaFree(d_C_ref_array);
+    cudaFree(d_error_bounds_list);
 }
 
-/* --
- * Compute a MFlop/s rate for C += A*B.
- *
- * The code runs the multiplication repeatedly in a loop MIN_RUNS times,
- * then doubles the loop time if it did not take MIN_SECS to perform the
- * run.  This helps us get around the limits of timer resolution.
+/*
+ * Measure time for batched_gemm_kernel.
  */
-double time_dgemm(const int M, const double *A, const double *B, double *C)
+double time_batched_gemm(int M, int N, double **A, double **B, double **C)
 {
     double secs = -1.0;
     double mflops_sec;
     int num_iterations = MIN_RUNS;
-    while (secs < MIN_SECS)
-    {
-        matrix_clear(C);
+    while (secs < MIN_SECS) {
+        for (int i = 0; i < N; i++)
+            memset(C[i], 0, M * M * sizeof(double));
         double start = omp_get_wtime();
-        for (int i = 0; i < num_iterations; ++i)
-        {
-            square_dgemm(M, A, B, C);
+        for (int i = 0; i < num_iterations; ++i) {
+            batched_gemm_kernel(M, N, (const double **)A, (const double **)B, C);
         }
         double finish = omp_get_wtime();
-        double mflops = 2.0 * num_iterations * M * M * M / 1.0e6;
+        double ops = 2.0 * num_iterations * N * (double)M * (double)M * (double)M / 1.0e6;
         secs = finish - start;
-        mflops_sec = mflops / secs;
+        mflops_sec = ops / secs;
         num_iterations *= 2;
     }
     return mflops_sec;
@@ -351,57 +317,72 @@ double time_dgemm(const int M, const double *A, const double *B, double *C)
 
 int main(int argc, char **argv)
 {
-
-    if (argc > 2)
-    {
-        fprintf(stderr, "Usage: matmul [csv]\n");
+    if (argc > 2) {
+        fprintf(stderr, "Usage: batched_matmul [csv]\n");
         exit(2);
     }
 
     FILE *fp;
-    if (argc == 1)
-    {
+    if (argc == 1) {
         const char *exename = argv[0];
         const char *s = exename + strlen(exename);
-        for (; s != exename && *s != '-' && *s != '/'; --s)
-            ;
-        char *fname = (char *)malloc(strlen(s) + strlen("timing.csv") + 1);
-        strcpy(fname, "timing");
+        for (; s != exename && *s != '-' && *s != '/'; --s);
+        char *fname = (char *)malloc(strlen(s) + strlen("timing_batched.csv") + 1);
+        strcpy(fname, "timing_batched");
         strcat(fname, s);
         strcat(fname, ".csv");
         fp = fopen(fname, "w");
         free(fname);
-    }
-    else
+    } else {
         fp = fopen(argv[1], "w");
+    }
 
-    if (!fp)
-    {
+    if (!fp) {
         fprintf(stderr, "Could not open '%s' for output\n", argv[1]);
         exit(3);
     }
 
-    double *A = (double *)malloc(MAX_SIZE * MAX_SIZE * sizeof(double));
-    double *B = (double *)malloc(MAX_SIZE * MAX_SIZE * sizeof(double));
-    double *C = (double *)malloc(MAX_SIZE * MAX_SIZE * sizeof(double));
+    int N = DEFAULT_BATCH_SIZE;
 
-    matrix_init(A);
-    matrix_init(B);
-
-    printf("Compiler:\t%s\nOptions:\t%s\nDescription:\t%s\n\n",
+    printf("Compiler:\t%s\nOptions:\t%s\nTag: %s\n\n",
            COMPILER, FLAGS, dgemm_desc);
 
-    fprintf(fp, "size,mflop\n");
-    for (int i = 0; i < N_SIZES; ++i)
-    {
-        const int M = test_sizes[i];
-        validate_dgemm(M, A, B, C);
-        fprintf(fp, "%u,%lg\n", M, time_dgemm(M, A, B, C));
-    }
+    fprintf(fp, "M,batch_size,mflop\n");
 
-    free(A);
-    free(B);
-    free(C);
+    for (int idx = 0; idx < N_SIZES; ++idx) {
+        int M = test_sizes[idx];
+
+        double **A = (double **)malloc(N * sizeof(double *));
+        double **B = (double **)malloc(N * sizeof(double *));
+        double **C = (double **)malloc(N * sizeof(double *));
+
+        for (int i = 0; i < N; i++) {
+            A[i] = (double *)malloc(M * M * sizeof(double));
+            B[i] = (double *)malloc(M * M * sizeof(double));
+            C[i] = (double *)malloc(M * M * sizeof(double));
+        }
+
+        srand48(0);
+        for (int i = 0; i < N; i++) {
+            for (int el = 0; el < M*M; el++) {
+                A[i][el] = drand48();
+                B[i][el] = drand48();
+            }
+        }
+
+        validate_batched_gemm(M, N, A, B, C);
+        double perf = time_batched_gemm(M, N, A, B, C);
+        fprintf(fp, "%d,%d,%lg\n", M, N, perf);
+
+        for (int i = 0; i < N; i++) {
+            free(A[i]);
+            free(B[i]);
+            free(C[i]);
+        }
+        free(A);
+        free(B);
+        free(C);
+    }
 
     fclose(fp);
     return 0;

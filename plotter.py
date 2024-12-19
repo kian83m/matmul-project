@@ -12,7 +12,7 @@ def make_plot(runs):
     "Plot results of timing trials"
     for arg in runs:
         df = pd.read_csv("timing-{0}.csv".format(arg))
-        plt.plot(df['size'], df['mflop'] / 1e3, label=arg)
+        plt.plot(df['M'], df['mflop'] / 1e3, label=f"{arg} {max(df['batch_size'])}")
     plt.xlabel('Dimension')
     plt.ylabel('Gflop/s')
     # df = pd.read_csv("timing-mine.csv")
