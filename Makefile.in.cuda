@@ -1,15 +1,17 @@
 # Versions to build
-#BUILDS=gpu-CB cublas 2D-blocking vectorize
-BUILDS=vectorize
+#BUILDS=gpu-CB cublas 2D-blocking warptiling vectorize
+BUILDS=warptiling
+#BUILDS=vectorize
 
 
 # C and Fortran compilers
-CC=CC
+CC=gcc
 FC=ftn
-LD=CC
+LD=gcc
 
 NVCC=nvcc
-NVCCFLAGS=-DCUDA
+#NVCCFLAGS=-DCUDA -arch=sm_80
+NVCCFLAGS=-DCUDA -O3 -arch=sm_80 -use_fast_math -lineinfo -Xptxas="-v"
 
 # Python (for plotting)
 PYTHON=python3
@@ -18,13 +20,13 @@ PYTHON=python3
 OPTFLAGS = -O3 
 CFLAGS = 
 FFLAGS =
-LDFLAGS = -fopenmp
+LDFLAGS = -fopenmp -L/usr/local/cuda/lib64
 
 # Add -DDEBUG_RUN to CPPFLAGS to cut down on the cases.
 CPPFLAGS = "-DCOMPILER=\"$(CC)\"" "-DFLAGS=\"$(OPTFLAGS)\""
 
 # Compile a C version (using basic_dgemm.c, in this case):
-LIBS = -lm 
+LIBS = -lm -lcudart
 OBJS = matmul.o
 
 # Libraries and include files for BLAS

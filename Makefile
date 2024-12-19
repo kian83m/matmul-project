@@ -53,6 +53,9 @@ matmul-2D-blocking: $(OBJS) dgemm_gpu_2D-block.o
 matmul-vectorize: $(OBJS) dgemm_gpu_vectorize.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) $(LIBcuBLAS)
 
+matmul-warptiling: $(OBJS) dgemm_gpu_warptiling.o
+	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) $(LIBcuBLAS)
+
 
 # --
 # Rules to build object files
@@ -85,6 +88,9 @@ dgemm_gpu_2D-block.o: dgemm_gpu_2D-block.cu
 	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
 
 dgemm_gpu_vectorize.o: dgemm_gpu_vectorize_access.cu
+	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
+
+dgemm_gpu_warptiling.o: dgemm_gpu_warptiling.cu
 	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
 
 dgemm_cublas.o: dgemm_cublas.cpp

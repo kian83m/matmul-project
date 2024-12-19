@@ -1,0 +1,121 @@
+Generating SQLite file dgemm_timeline.sqlite from dgemm_timeline.nsys-rep
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/nvtx_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain NV Tools Extension (NVTX) data.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/osrt_sum.py]... 
+
+ ** OS Runtime Summary (osrt_sum):
+
+ Time (%)  Total Time (ns)  Num Calls   Avg (ns)    Med (ns)    Min (ns)  Max (ns)   StdDev (ns)           Name         
+ --------  ---------------  ---------  ----------  -----------  --------  ---------  -----------  ----------------------
+     83.3      53810625807        549  98015711.9  100121410.0      4668  242993922   15818404.1  poll                  
+     16.6      10719753386     366479     29250.7      24386.0      1132   34285064      69115.7  ioctl                 
+      0.0         21859452       5401      4047.3       3426.0      2124     195408       3900.8  munmap                
+      0.0         13351298       2712      4923.0       4007.0      3046     106059       4927.0  mmap                  
+      0.0          4339976         36    120554.9      10545.5      7454    3287505     545028.6  mmap64                
+      0.0          1757435         16    109839.7      27031.0     14177     371308     133405.7  pthread_rwlock_wrlock 
+      0.0          1129356         15     75290.4      68489.0      9869     200738      58183.4  pthread_rwlock_rdlock 
+      0.0           851856         60     14197.6       6998.0      2484     199055      29287.0  fopen                 
+      0.0           470855         57      8260.6       7153.0      4508      26681       3270.1  open64                
+      0.0           326684         12     27223.7      26886.0     17072      41588       6997.0  sem_timedwait         
+      0.0           265379          2    132689.5     132689.5     92574     172805      56731.9  pthread_create        
+      0.0           246018         40      6150.4       1317.0      1012     168998      26460.5  fclose                
+      0.0           133110          1    133110.0     133110.0    133110     133110          0.0  pthread_cond_wait     
+      0.0           103745          4     25936.3       3386.0      2555      94418      45656.2  fgets                 
+      0.0            55735          6      9289.2       9597.5      2886      14568       4404.7  open                  
+      0.0            50025          3     16675.0      19387.0      5711      24927       9890.9  pipe2                 
+      0.0            39132         14      2795.1       2769.5      1703       4719        911.6  write                 
+      0.0            38782          3     12927.3       4368.0      2354      32060      16599.9  fwrite                
+      0.0            35949         14      2567.8       1518.0      1162       8786       2286.0  read                  
+      0.0            35818          2     17909.0      17909.0      8947      26871      12674.2  socket                
+      0.0            34566          5      6913.2       7103.0      2455       9188       2663.5  fread                 
+      0.0            25428          1     25428.0      25428.0     25428      25428          0.0  connect               
+      0.0            22943          6      3823.8       1598.0      1142       9378       3790.1  fcntl                 
+      0.0            10922          3      3640.7       3537.0      3487       3898        224.3  fopen64               
+      0.0             9348          2      4674.0       4674.0      4509       4839        233.3  pthread_cond_broadcast
+      0.0             8726          1      8726.0       8726.0      8726       8726          0.0  bind                  
+      0.0             2976          1      2976.0       2976.0      2976       2976          0.0  listen                
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/cuda_api_sum.py]... 
+
+ ** CUDA API Summary (cuda_api_sum):
+
+ Time (%)  Total Time (ns)  Num Calls  Avg (ns)  Med (ns)  Min (ns)  Max (ns)   StdDev (ns)           Name         
+ --------  ---------------  ---------  --------  --------  --------  ---------  -----------  ----------------------
+     42.8      15435927948     108544  142208.9   30848.0      4649  376650404    2170655.9  cudaMemcpy            
+     23.0       8282544471      36208  228749.0   54343.0      3086  941535315    7826764.6  cudaDeviceSynchronize 
+     17.4       6284760169     108544   57900.6    2735.0      1172  205529154     626780.9  cudaMalloc            
+     15.8       5710119544     108544   52606.5    3968.0      1393    3975279      58370.6  cudaFree              
+      0.9        313571316      36208    8660.3    7970.0      4248    3837460      20767.3  cudaLaunchKernel      
+      0.0             2114          1    2114.0    2114.0      2114       2114          0.0  cuModuleGetLoadingMode
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/cuda_gpu_kern_sum.py]... 
+
+ ** CUDA GPU Kernel Summary (cuda_gpu_kern_sum):
+
+ Time (%)  Total Time (ns)  Instances   Avg (ns)   Med (ns)  Min (ns)  Max (ns)   StdDev (ns)                                              Name                                            
+ --------  ---------------  ---------  ----------  --------  --------  ---------  -----------  --------------------------------------------------------------------------------------------
+     71.1       5372369075      36128    148703.7   39392.0      7359  309877144    3683582.7  square_dgemm_kernel_2d_blocktiling(int, const double *, const double *, double *)           
+     14.6       1105262436         40  27631560.9  154783.5      5056  941527334  148552956.8  gpu_mmm_ground_truth(const double *, const double *, double *, int)                         
+     14.3       1078542916         40  26963572.9  145712.0      4160  912396039  143963423.4  calculate_error_bound(const double *, const double *, const double *, double *, int, double)
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/cuda_gpu_mem_time_sum.py]... 
+
+ ** CUDA GPU MemOps Summary (by Time) (cuda_gpu_mem_time_sum):
+
+ Time (%)  Total Time (ns)  Count  Avg (ns)  Med (ns)  Min (ns)  Max (ns)   StdDev (ns)           Operation          
+ --------  ---------------  -----  --------  --------  --------  ---------  -----------  ----------------------------
+     61.1       7654280814  72336  105815.6   13376.0      1535  210736321    1595909.1  [CUDA memcpy Host-to-Device]
+     38.9       4869390090  36208  134483.8   13120.0      2048  375710118    2984680.5  [CUDA memcpy Device-to-Host]
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/cuda_gpu_mem_size_sum.py]... 
+
+ ** CUDA GPU MemOps Summary (by Size) (cuda_gpu_mem_size_sum):
+
+ Total (MB)  Count  Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)           Operation          
+ ----------  -----  --------  --------  --------  --------  -----------  ----------------------------
+ 110107.220  72336     1.522     0.295     0.008   800.000       11.463  [CUDA memcpy Host-to-Device]
+  56388.928  36208     1.557     0.295     0.008   800.000       12.236  [CUDA memcpy Device-to-Host]
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/openmp_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain OpenMP event data.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/opengl_khr_range_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain KHR Extension (KHR_DEBUG) data.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/opengl_khr_gpu_range_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain GPU KHR Extension (KHR_DEBUG) data.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/vulkan_marker_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain Vulkan Debug Extension (Vulkan Debug Util) data.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/vulkan_gpu_marker_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain GPU Vulkan Debug Extension (GPU Vulkan Debug markers) data.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/dx11_pix_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain DX11 CPU debug markers.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/dx12_gpu_marker_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain DX12 GPU debug markers.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/dx12_pix_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain DX12 CPU debug markers.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/wddm_queue_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain WDDM context data.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/um_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain CUDA Unified Memory CPU page faults data.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/um_total_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain CUDA Unified Memory CPU page faults data.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/um_cpu_page_faults_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain CUDA Unified Memory CPU page faults data.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/openacc_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain OpenACC event data.
+
+Processing [dgemm_timeline.sqlite] with [/opt/nvidia/nsight-systems/2024.5.1/host-linux-x64/reports/syscall_sum.py]... 
+SKIPPED: dgemm_timeline.sqlite does not contain syscall data.
+
