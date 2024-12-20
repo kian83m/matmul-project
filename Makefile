@@ -70,4 +70,4 @@ clean:
 	rm -f matmul-* *.o
 
 realclean: clean
-	rm -f *~ timing-*.csv timing.pdf dump_*.txt $(DRIVERS)
+	rm -f *~ timing-*.csv timing_*.csv dump_*.txt $(DRIVERS)

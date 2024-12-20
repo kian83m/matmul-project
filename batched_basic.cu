@@ -1,10 +1,9 @@
+#include <stdio.h>
 const char *dgemm_desc = "My Basic Batched.";
 
 #define CEIL_DIV(a, b) ((a + b - 1) / b)
 
 // Tile sizes
-#define BM 64
-#define BN 64
 #define BK 16
 
 // Thread tile sizes
@@ -39,7 +38,12 @@ __device__ inline void compute_tile_indices(int &tile_m, int &tile_n, int m_tile
   tile_n = linear_idx % n_tiles;
 }
 
-__device__ inline void load_tile(
+//_________________________________________________________
+//***********************64*******************************/
+#define BM64 64
+#define BN64 64
+
+__device__ inline void load_tile_64(
     const double * __restrict__ A, const double * __restrict__ B,
     int M, int globalRowStart, int globalColStart,
     int kt, // which k-tile
@@ -53,8 +57,8 @@ __device__ inline void load_tile(
 
   int linearThreadIdx = tRow * THREADS_PER_BLOCK_N + tCol;
 
-  int elemsPerThreadA = (BM * BK) / (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N); // 1024/256=4
-  int elemsPerThreadB = (BK * BN) / (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N); // also 4
+  int elemsPerThreadA = (BM64 * BK) / (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N); // 1024/256=4
+  int elemsPerThreadB = (BK * BN64) / (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N); // also 4
 
   // We will load 4 elements from A and B. Since BK=16 is divisible by 2, we can load double2 pairs.
   // Similarly for BN=64 and BM=64.
@@ -82,8 +86,8 @@ __device__ inline void load_tile(
   // B tile spans rows [kt*BK .. kt*BK+BK-1], cols [globalColStart..globalColStart+BN-1]
   for (int i = 0; i < elemsPerThreadB; i++) {
     int index = linearThreadIdx + i * (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N);
-    int rowB = index / BN;
-    int colB = index % BN;
+    int rowB = index / BN64;
+    int colB = index % BN64;
 
     int globalBrow = kt * BK + rowB;
     int globalBcol = globalColStart + colB;
@@ -92,11 +96,11 @@ __device__ inline void load_tile(
     if (globalBrow < M && globalBcol < M) {
       valB = ldg_double(&B[globalBrow * M + globalBcol]);
     }
-    Bs[rowB * BN + colB] = valB;
+    Bs[rowB * BN64 + colB] = valB;
   }
 }
 
-__device__ inline void compute_tile(
+__device__ inline void compute_tile_64(
     const double * __restrict__ As, const double * __restrict__ Bs,
     double * __restrict__ threadResults,
     int tRow, int tCol)
@@ -116,7 +120,7 @@ __device__ inline void compute_tile(
     #pragma unroll
     for (int j = 0; j < TN; j++) {
       int bCol = tCol * TN + j;
-      regN[j] = Bs[dotIdx * BN + bCol];
+      regN[j] = Bs[dotIdx * BN64 + bCol];
     }
     #pragma unroll
     for (int i = 0; i < TM; i++) {
@@ -129,15 +133,15 @@ __device__ inline void compute_tile(
   }
 }
 
-__global__ void square_dgemm_kernel_2d_blocktiling(
+__global__ void square_dgemm_kernel_2d_blocktiling_64(
     const int M, const int N, const double ** A0, const double ** B0, double ** C0)
 {
   // Double buffering
-  __shared__ double As[2][BM * BK];
-  __shared__ double Bs[2][BK * BN];
+  __shared__ double As[2][BM64 * BK];
+  __shared__ double Bs[2][BK * BN64];
 
-  int m_tiles = CEIL_DIV(M, BM);
-  int n_tiles = CEIL_DIV(M, BN);
+  int m_tiles = CEIL_DIV(M, BM64);
+  int n_tiles = CEIL_DIV(M, BN64);
 
   int tile_m, tile_n;
   compute_tile_indices(tile_m, tile_n, m_tiles, n_tiles);
@@ -152,15 +156,15 @@ __global__ void square_dgemm_kernel_2d_blocktiling(
     const double *B = B0[batch];
     double *C = C0[batch];
 
-  const int THREADS_PER_BLOCK_M = BM / TM; // 64/4=16
-  const int THREADS_PER_BLOCK_N = BN / TN; // 64/4=16
+  const int THREADS_PER_BLOCK_M = BM64 / TM; // 64/4=16
+  const int THREADS_PER_BLOCK_N = BN64 / TN; // 64/4=16
   // blockDim should be (16,16)=256 threads
 
   const int tRow = threadIdx.y; 
   const int tCol = threadIdx.x; 
 
-  const int globalRowStart = tile_m * BM;
-  const int globalColStart = tile_n * BN;
+  const int globalRowStart = tile_m * BM64;
+  const int globalColStart = tile_n * BN64;
 
   double threadResults[TM * TN];
   #pragma unroll
@@ -172,7 +176,7 @@ __global__ void square_dgemm_kernel_2d_blocktiling(
 
   // Preload the first tile
   int curLoad = 0;
-  load_tile(A, B, M, globalRowStart, globalColStart, 0,
+  load_tile_64(A, B, M, globalRowStart, globalColStart, 0,
             As[curLoad], Bs[curLoad], tRow, tCol, THREADS_PER_BLOCK_M, THREADS_PER_BLOCK_N);
   __syncthreads(); // ensure first tile is loaded
 
@@ -183,14 +187,14 @@ __global__ void square_dgemm_kernel_2d_blocktiling(
     int nextLoad = 1 - curLoad;
 
     // Start loading next tile
-    load_tile(A, B, M, globalRowStart, globalColStart, kt,
+    load_tile_64(A, B, M, globalRowStart, globalColStart, kt,
               As[nextLoad], Bs[nextLoad],
               tRow, tCol, THREADS_PER_BLOCK_M, THREADS_PER_BLOCK_N);
 
     __syncthreads(); // Wait for next tile to be fully loaded
 
     // Compute on previously loaded tile
-    compute_tile(As[curCompute], Bs[curCompute], threadResults, tRow, tCol);
+    compute_tile_64(As[curCompute], Bs[curCompute], threadResults, tRow, tCol);
 
     __syncthreads(); // Ensure compute done before reusing shared memory
 
@@ -200,7 +204,7 @@ __global__ void square_dgemm_kernel_2d_blocktiling(
   }
 
   // Compute on the last tile
-  compute_tile(As[curCompute], Bs[curCompute], threadResults, tRow, tCol);
+  compute_tile_64(As[curCompute], Bs[curCompute], threadResults, tRow, tCol);
 
   // Write results back to C
   #pragma unroll
@@ -215,6 +219,381 @@ __global__ void square_dgemm_kernel_2d_blocktiling(
     }
   }
 }
+//********************************************************/
+//_________________________________________________________
+
+
+
+
+
+
+//_________________________________________________________
+//***********************32*******************************/
+#define BM32 32
+#define BN32 32
+
+__device__ inline void load_tile_32(
+    const double * __restrict__ A, const double * __restrict__ B,
+    int M, int globalRowStart, int globalColStart,
+    int kt, // which k-tile
+    double * __restrict__ As, double * __restrict__ Bs,
+    int tRow, int tCol,
+    int THREADS_PER_BLOCK_M, int THREADS_PER_BLOCK_N)
+{
+  // Each tile: A: BMxBK = 64x16=1024 elems, B: BKxBN=16x64=1024 elems
+  // blockDim = 16x16 = 256 threads
+  // Each thread loads 4 elements from A and 4 from B. We can vectorize these loads using double2.
+
+  int linearThreadIdx = tRow * THREADS_PER_BLOCK_N + tCol;
+
+  int elemsPerThreadA = (BM32 * BK) / (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N); // 1024/256=4
+  int elemsPerThreadB = (BK * BN32) / (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N); // also 4
+
+  // We will load 4 elements from A and B. Since BK=16 is divisible by 2, we can load double2 pairs.
+  // Similarly for BN=64 and BM=64.
+
+  // Load A tile
+  // The A tile spans rows [globalRowStart .. globalRowStart+BM-1], 
+  // and columns [kt*BK .. kt*BK+BK-1].
+  // We'll load them linearly and use double2 loads if possible.
+  for (int i = 0; i < elemsPerThreadA; i++) {
+    int index = linearThreadIdx + i * (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N);
+    int rowA = index / BK; 
+    int colA = index % BK;
+
+    int globalArow = globalRowStart + rowA;
+    int globalAcol = kt * BK + colA;
+
+    double valA = 0.0;
+    if (globalArow < M && globalAcol < M) {
+      valA = ldg_double(&A[globalArow * M + globalAcol]);
+    }
+    As[rowA * BK + colA] = valA;
+  }
+
+  // Load B tile
+  // B tile spans rows [kt*BK .. kt*BK+BK-1], cols [globalColStart..globalColStart+BN-1]
+  for (int i = 0; i < elemsPerThreadB; i++) {
+    int index = linearThreadIdx + i * (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N);
+    int rowB = index / BN32;
+    int colB = index % BN32;
+
+    int globalBrow = kt * BK + rowB;
+    int globalBcol = globalColStart + colB;
+
+    double valB = 0.0;
+    if (globalBrow < M && globalBcol < M) {
+      valB = ldg_double(&B[globalBrow * M + globalBcol]);
+    }
+    Bs[rowB * BN32 + colB] = valB;
+  }
+}
+
+__device__ inline void compute_tile_32(
+    const double * __restrict__ As, const double * __restrict__ Bs,
+    double * __restrict__ threadResults,
+    int tRow, int tCol)
+{
+  // Compute partial product: Ctile += A_tile * B_tile
+  // TM=4, TN=4
+  #pragma unroll
+  for (int dotIdx = 0; dotIdx < BK; ++dotIdx) {
+    double regM[TM];
+    double regN[TN];
+
+    #pragma unroll
+    for (int i = 0; i < TM; i++) {
+      int aRow = tRow * TM + i;
+      regM[i] = As[aRow * BK + dotIdx];
+    }
+    #pragma unroll
+    for (int j = 0; j < TN; j++) {
+      int bCol = tCol * TN + j;
+      regN[j] = Bs[dotIdx * BN32 + bCol];
+    }
+    #pragma unroll
+    for (int i = 0; i < TM; i++) {
+      double m_val = regM[i];
+      #pragma unroll
+      for (int j = 0; j < TN; j++) {
+        threadResults[i * TN + j] += m_val * regN[j];
+      }
+    }
+  }
+}
+
+__global__ void square_dgemm_kernel_2d_blocktiling_32(
+    const int M, const int N, const double ** A0, const double ** B0, double ** C0)
+{
+  // Double buffering
+  __shared__ double As[2][BM32 * BK];
+  __shared__ double Bs[2][BK * BN32];
+
+  int m_tiles = CEIL_DIV(M, BM32);
+  int n_tiles = CEIL_DIV(M, BN32);
+
+  int tile_m, tile_n;
+  compute_tile_indices(tile_m, tile_n, m_tiles, n_tiles);
+
+  int batch = blockIdx.z; 
+
+  if (tile_m >= m_tiles || tile_n >= n_tiles || batch >= N)
+    return;
+
+
+    const double *A = A0[batch];
+    const double *B = B0[batch];
+    double *C = C0[batch];
+
+  const int THREADS_PER_BLOCK_M = BM32 / TM; // 64/4=16
+  const int THREADS_PER_BLOCK_N = BN32 / TN; // 64/4=16
+  // blockDim should be (16,16)=256 threads
+
+  const int tRow = threadIdx.y; 
+  const int tCol = threadIdx.x; 
+
+  const int globalRowStart = tile_m * BM32;
+  const int globalColStart = tile_n * BN32;
+
+  double threadResults[TM * TN];
+  #pragma unroll
+  for (int i = 0; i < TM * TN; i++) {
+    threadResults[i] = 0.0;
+  }
+
+  int k_tiles = CEIL_DIV(M, BK);
+
+  // Preload the first tile
+  int curLoad = 0;
+  load_tile_32(A, B, M, globalRowStart, globalColStart, 0,
+            As[curLoad], Bs[curLoad], tRow, tCol, THREADS_PER_BLOCK_M, THREADS_PER_BLOCK_N);
+  __syncthreads(); // ensure first tile is loaded
+
+  int curCompute = curLoad;
+
+  // Main loop over K
+  for (int kt = 1; kt < k_tiles; kt++) {
+    int nextLoad = 1 - curLoad;
+
+    // Start loading next tile
+    load_tile_32(A, B, M, globalRowStart, globalColStart, kt,
+              As[nextLoad], Bs[nextLoad],
+              tRow, tCol, THREADS_PER_BLOCK_M, THREADS_PER_BLOCK_N);
+
+    __syncthreads(); // Wait for next tile to be fully loaded
+
+    // Compute on previously loaded tile
+    compute_tile_32(As[curCompute], Bs[curCompute], threadResults, tRow, tCol);
+
+    __syncthreads(); // Ensure compute done before reusing shared memory
+
+    // Switch buffers
+    curLoad = nextLoad;
+    curCompute = curLoad;
+  }
+
+  // Compute on the last tile
+  compute_tile_32(As[curCompute], Bs[curCompute], threadResults, tRow, tCol);
+
+  // Write results back to C
+  #pragma unroll
+  for (int i = 0; i < TM; i++) {
+    int cRow = globalRowStart + tRow * TM + i;
+    #pragma unroll
+    for (int j = 0; j < TN; j++) {
+      int cCol = globalColStart + tCol * TN + j;
+      if (cRow < M && cCol < M) {
+        C[cRow * M + cCol] = threadResults[i * TN + j];
+      }
+    }
+  }
+}
+//********************************************************/
+//_________________________________________________________
+
+//_________________________________________________________
+//***********************16*******************************/
+#define BM16 16
+#define BN16 16
+
+__device__ inline void load_tile_16(
+    const double * __restrict__ A, const double * __restrict__ B,
+    int M, int globalRowStart, int globalColStart,
+    int kt, // which k-tile
+    double * __restrict__ As, double * __restrict__ Bs,
+    int tRow, int tCol,
+    int THREADS_PER_BLOCK_M, int THREADS_PER_BLOCK_N)
+{
+  // Each tile: A: BMxBK = 64x16=1024 elems, B: BKxBN=16x64=1024 elems
+  // blockDim = 16x16 = 256 threads
+  // Each thread loads 4 elements from A and 4 from B. We can vectorize these loads using double2.
+
+  int linearThreadIdx = tRow * THREADS_PER_BLOCK_N + tCol;
+
+  int elemsPerThreadA = (BM16 * BK) / (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N); // 1024/256=4
+  int elemsPerThreadB = (BK * BN16) / (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N); // also 4
+
+  // We will load 4 elements from A and B. Since BK=16 is divisible by 2, we can load double2 pairs.
+  // Similarly for BN=64 and BM=64.
+
+  // Load A tile
+  // The A tile spans rows [globalRowStart .. globalRowStart+BM-1], 
+  // and columns [kt*BK .. kt*BK+BK-1].
+  // We'll load them linearly and use double2 loads if possible.
+  for (int i = 0; i < elemsPerThreadA; i++) {
+    int index = linearThreadIdx + i * (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N);
+    int rowA = index / BK; 
+    int colA = index % BK;
+
+    int globalArow = globalRowStart + rowA;
+    int globalAcol = kt * BK + colA;
+
+    double valA = 0.0;
+    if (globalArow < M && globalAcol < M) {
+      valA = ldg_double(&A[globalArow * M + globalAcol]);
+    }
+    As[rowA * BK + colA] = valA;
+  }
+
+  // Load B tile
+  // B tile spans rows [kt*BK .. kt*BK+BK-1], cols [globalColStart..globalColStart+BN-1]
+  for (int i = 0; i < elemsPerThreadB; i++) {
+    int index = linearThreadIdx + i * (THREADS_PER_BLOCK_M * THREADS_PER_BLOCK_N);
+    int rowB = index / BN16;
+    int colB = index % BN16;
+
+    int globalBrow = kt * BK + rowB;
+    int globalBcol = globalColStart + colB;
+
+    double valB = 0.0;
+    if (globalBrow < M && globalBcol < M) {
+      valB = ldg_double(&B[globalBrow * M + globalBcol]);
+    }
+    Bs[rowB * BN16 + colB] = valB;
+  }
+}
+
+__device__ inline void compute_tile_16(
+    const double * __restrict__ As, const double * __restrict__ Bs,
+    double * __restrict__ threadResults,
+    int tRow, int tCol)
+{
+  // Compute partial product: Ctile += A_tile * B_tile
+  // TM=4, TN=4
+  #pragma unroll
+  for (int dotIdx = 0; dotIdx < BK; ++dotIdx) {
+    double regM[TM];
+    double regN[TN];
+
+    #pragma unroll
+    for (int i = 0; i < TM; i++) {
+      int aRow = tRow * TM + i;
+      regM[i] = As[aRow * BK + dotIdx];
+    }
+    #pragma unroll
+    for (int j = 0; j < TN; j++) {
+      int bCol = tCol * TN + j;
+      regN[j] = Bs[dotIdx * BN16 + bCol];
+    }
+    #pragma unroll
+    for (int i = 0; i < TM; i++) {
+      double m_val = regM[i];
+      #pragma unroll
+      for (int j = 0; j < TN; j++) {
+        threadResults[i * TN + j] += m_val * regN[j];
+      }
+    }
+  }
+}
+
+__global__ void square_dgemm_kernel_2d_blocktiling_16(
+    const int M, const int N, const double ** A0, const double ** B0, double ** C0)
+{
+  // Double buffering
+  __shared__ double As[2][BM16 * BK];
+  __shared__ double Bs[2][BK * BN16];
+
+  int m_tiles = CEIL_DIV(M, BM16);
+  int n_tiles = CEIL_DIV(M, BN16);
+
+  int tile_m, tile_n;
+  compute_tile_indices(tile_m, tile_n, m_tiles, n_tiles);
+
+  int batch = blockIdx.z; 
+
+  if (tile_m >= m_tiles || tile_n >= n_tiles || batch >= N)
+    return;
+
+
+    const double *A = A0[batch];
+    const double *B = B0[batch];
+    double *C = C0[batch];
+
+  const int THREADS_PER_BLOCK_M = BM16 / TM; // 64/4=16
+  const int THREADS_PER_BLOCK_N = BN16 / TN; // 64/4=16
+  // blockDim should be (16,16)=256 threads
+
+  const int tRow = threadIdx.y; 
+  const int tCol = threadIdx.x; 
+
+  const int globalRowStart = tile_m * BM16;
+  const int globalColStart = tile_n * BN16;
+
+  double threadResults[TM * TN];
+  #pragma unroll
+  for (int i = 0; i < TM * TN; i++) {
+    threadResults[i] = 0.0;
+  }
+
+  int k_tiles = CEIL_DIV(M, BK);
+
+  // Preload the first tile
+  int curLoad = 0;
+  load_tile_16(A, B, M, globalRowStart, globalColStart, 0,
+            As[curLoad], Bs[curLoad], tRow, tCol, THREADS_PER_BLOCK_M, THREADS_PER_BLOCK_N);
+  __syncthreads(); // ensure first tile is loaded
+
+  int curCompute = curLoad;
+
+  // Main loop over K
+  for (int kt = 1; kt < k_tiles; kt++) {
+    int nextLoad = 1 - curLoad;
+
+    // Start loading next tile
+    load_tile_16(A, B, M, globalRowStart, globalColStart, kt,
+              As[nextLoad], Bs[nextLoad],
+              tRow, tCol, THREADS_PER_BLOCK_M, THREADS_PER_BLOCK_N);
+
+    __syncthreads(); // Wait for next tile to be fully loaded
+
+    // Compute on previously loaded tile
+    compute_tile_16(As[curCompute], Bs[curCompute], threadResults, tRow, tCol);
+
+    __syncthreads(); // Ensure compute done before reusing shared memory
+
+    // Switch buffers
+    curLoad = nextLoad;
+    curCompute = curLoad;
+  }
+
+  // Compute on the last tile
+  compute_tile_16(As[curCompute], Bs[curCompute], threadResults, tRow, tCol);
+
+  // Write results back to C
+  #pragma unroll
+  for (int i = 0; i < TM; i++) {
+    int cRow = globalRowStart + tRow * TM + i;
+    #pragma unroll
+    for (int j = 0; j < TN; j++) {
+      int cCol = globalColStart + tCol * TN + j;
+      if (cRow < M && cCol < M) {
+        C[cRow * M + cCol] = threadResults[i * TN + j];
+      }
+    }
+  }
+}
+//********************************************************/
+//_________________________________________________________
 
 
 
@@ -230,10 +609,14 @@ void batched_gemm_kernel
 )
 {
 
-    dim3 blockDim(16, 16);
-    dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
-                 (M + blockDim.y - 1) / blockDim.y,
-                 N);
+
+    dim3 blockDim;
+    dim3 gridDim;
+
+    // dim3 blockDim(16, 16);
+    // dim3 gridDim((M + blockDim.x - 1) / blockDim.x,
+    //              (M + blockDim.y - 1) / blockDim.y,
+    //              N);
 
     size_t matrix_size = M * M * sizeof(double);
 
@@ -274,7 +657,32 @@ void batched_gemm_kernel
 
     // Launch the kernel
     
-    square_dgemm_kernel_2d_blocktiling<<<gridDim, blockDim>>>(M, N, d_A_array, d_B_array, d_C_array);
+    // Decide which kernel to launch based on M
+    if (M > 94){
+        // 64x64 Tile Configuration
+        blockDim = dim3(16, 16);
+        gridDim = dim3(CEIL_DIV(M, BM64), CEIL_DIV(M, BN64), N);
+
+        square_dgemm_kernel_2d_blocktiling_64<<<gridDim, blockDim>>>(M, N, d_A_array, d_B_array, d_C_array);
+        // printf("Launched 64x64 tile kernel.\n");
+    } 
+    else if(M > 40){
+        // 32x32 Tile Configuration
+        blockDim = dim3(8, 8);
+        gridDim = dim3(CEIL_DIV(M, BM32), CEIL_DIV(M, BN32), N);
+
+        square_dgemm_kernel_2d_blocktiling_32<<<gridDim, blockDim>>>(M, N, d_A_array, d_B_array, d_C_array);
+        // printf("Launched 32x32 tile kernel.\n");
+    } 
+    else{
+        // 16x16 Tile Configuration
+        blockDim = dim3(4, 4);
+        gridDim = dim3(CEIL_DIV(M, BM16), CEIL_DIV(M, BN16), N);
+
+        square_dgemm_kernel_2d_blocktiling_16<<<gridDim, blockDim>>>(M, N, d_A_array, d_B_array, d_C_array);
+        // printf("Launched 16x16 tile kernel.\n");
+    }
+
     cudaDeviceSynchronize();
 
     // Copy the result back to the host

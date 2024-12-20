@@ -16,46 +16,89 @@
 extern void batched_gemm_kernel(const int M, const int N, const double **A0, const double **B0, double **C0);
 extern const char *dgemm_desc;
 
-#define MIN_RUNS 4
-#define MIN_SECS 0.25
+#define MIN_RUNS 7
+#define MIN_SECS 0.8
+
+// #define DEBUG_RUN
+
+// const int test_sizes[] = {
+//     31,
+//     32,
+//     96,
+//     97,
+//     127,
+//     128,
+//     129,
+//     191,192,229,
+//     255,256,257,
+//     319,320,321,
+// #if !defined(DEBUG_RUN)
+//     // 417,479,480,
+//     // 511,512,639,640,
+//     // 767,768,769,
+//     // 1023,
+//     // 1024,1025,
+//     // 1525,1526,1527,
+//     // 2024,
+//     // 2025,2525,
+//     // 2526,2527,
+//     // 3000,
+//     // 4000,5000
+// #endif
+// };
+
+// const int test_sizes[] = {
+//     128,
+//     128,
+//     128,
+//     128,
+//     128,
+//     128,
+//     128,
+//     128,
+//     128,
+//     128,
+//     128,
+//     128,
+//     128,
+//     128,
+//     128,
+//     128
+// };
+
+// const int batched_sizes[] = {
+//     31,
+//     32,
+//     96,
+//     97,
+//     127,
+//     128,
+//     129,
+//     191,192,229,
+//     255,256,257,
+//     319,320,321
+// };
 
 const int test_sizes[] = {
-    31,
-    32,
-    96,
-    97,
-    127,
-    128,
-    129
-#if !defined(DEBUG_RUN)
-    ,191,192,229,
-    255,256,257,
-    319,320,321,
-    // 417,479,480,
-    511,512,639,640,
-    // 767,768,769,
-    1023,1024,1025,
-    // 1525,1526,1527,
-    2024,2025,2525,
-    // 2526,2527,
-    3000,4000,5000
-#endif
+31, 36, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101, 106, 111, 116, 121,
+126, 131, 136, 141, 146, 151, 156, 161, 166, 171, 176, 181, 186, 191, 196, 201,
+206, 211, 216, 221, 226, 231, 236, 241, 246, 251, 256, 261, 266, 271, 276, 281,
+286, 291, 296, 301, 306, 311, 316, 321, 326, 331, 336, 341, 346, 351, 356
 };
 
+const int batched_sizes[] = {
+31, 36, 41, 46, 51, 56, 61, 66, 71, 76, 81, 86, 91, 96, 101, 106, 111, 116, 121,
+126, 131, 136, 141, 146, 151, 156, 161, 166, 171, 176, 181, 186, 191, 196, 201,
+206, 211, 216, 221, 226, 231, 236, 241, 246, 251, 256, 261, 266, 271, 276, 281,
+286, 291, 296, 301, 306, 311, 316, 321, 326, 331, 336, 341, 346, 351, 356
+};
+
+
 #define N_SIZES (sizeof(test_sizes) / sizeof(int))
-#define MAX_SIZE 5000u
+#define MAX_SIZE 356u
 #define DEFAULT_BATCH_SIZE 15
+#define MAX_BATCH_SIZE 356u
 
-void matrix_init(double *A)
-{
-    for (int i = 0; i < MAX_SIZE * MAX_SIZE; ++i)
-        A[i] = drand48();
-}
-
-void matrix_clear(double *C)
-{
-    memset(C, 0, MAX_SIZE * MAX_SIZE * sizeof(double));
-}
 
 // GPU kernel to compute ground truth
 __global__ void gpu_batched_mmm_ground_truth(
@@ -111,40 +154,6 @@ __global__ void gpu_batched_calculate_error_bound(
 
         error_bounds_list[i * M * M + row * M + col] = errorbound * (M * epsilon);
     }
-}
-
-void diff_dgemm(const int M, const double *C_user, const double *C_ground_truth)
-{
-    FILE *fp_our = fopen("dump_our.txt", "w");
-    FILE *fp_ref = fopen("dump_ref.txt", "w");
-    FILE *fp_diff = fopen("dump_diff.txt", "w");
-
-    if (!fp_our || !fp_ref || !fp_diff)
-    {
-        fprintf(stderr, "Error opening output files in diff_dgemm.\n");
-        exit(-1);
-    }
-
-    for (int i = 0; i < M; ++i)
-    {
-        for (int j = 0; j < M; ++j)
-        {
-            double user_value = C_user[i * M + j];
-            double ground_truth_value = C_ground_truth[i * M + j];
-            double diff = user_value - ground_truth_value;
-
-            fprintf(fp_our, " %g", user_value);
-            fprintf(fp_ref, " %g", ground_truth_value);
-            fprintf(fp_diff, " % 0.0e", diff);
-        }
-        fprintf(fp_our, "\n");
-        fprintf(fp_ref, "\n");
-        fprintf(fp_diff, "\n");
-    }
-
-    fclose(fp_diff);
-    fclose(fp_ref);
-    fclose(fp_our);
 }
 
 void diff_batched_dgemm(const int M, const int N, double **C, double **C_ref)
@@ -342,7 +351,6 @@ int main(int argc, char **argv)
         exit(3);
     }
 
-    int N = DEFAULT_BATCH_SIZE;
 
     printf("Compiler:\t%s\nOptions:\t%s\nTag: %s\n\n",
            COMPILER, FLAGS, dgemm_desc);
@@ -351,6 +359,8 @@ int main(int argc, char **argv)
 
     for (int idx = 0; idx < N_SIZES; ++idx) {
         int M = test_sizes[idx];
+        int N = batched_sizes[idx];
+        printf("M: %d, N: %d \n", M, N);
 
         double **A = (double **)malloc(N * sizeof(double *));
         double **B = (double **)malloc(N * sizeof(double *));
