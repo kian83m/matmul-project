@@ -38,7 +38,7 @@ matmul-mine: $(OBJS) dgemm_mine.o
 matmul-basic: $(OBJS) dgemm_basic.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS)
 
-matmul-gpu-CB: $(OBJS) dgemm_gpu-CB.o
+matmul-gpu-shared_memory_CB: $(OBJS) dgemm_gpu-shared_memory_CB.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS)
 
 matmul-gpu_basic: $(OBJS) dgemm_gpu_basic.o
@@ -53,7 +53,7 @@ matmul-2D-blocking: $(OBJS) dgemm_gpu_2D-block.o
 matmul-vectorize: $(OBJS) dgemm_gpu_vectorize.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) $(LIBcuBLAS)
 
-matmul-warptiling: $(OBJS) dgemm_gpu_warptiling.o
+matmul-double_buffer: $(OBJS) dgemm_gpu_double_buffer.o
 	$(LD) -o $@ $^ $(LDFLAGS) $(LIBS) $(LIBcuBLAS)
 
 
@@ -81,7 +81,7 @@ dgemm_veclib.o: dgemm_blas.c
 	clang -o $@ -c $(CFLAGS) $(CPPFLAGS) -DOSX_ACCELERATE $< 
 
 
-dgemm_gpu-CB.o: dgemm_gpu_cache-blocking.cu
+dgemm_gpu-shared_memory_CB.o: dgemm_gpu_cache-blocking.cu
 	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
 
 dgemm_gpu_2D-block.o: dgemm_gpu_2D-block.cu
@@ -90,7 +90,7 @@ dgemm_gpu_2D-block.o: dgemm_gpu_2D-block.cu
 dgemm_gpu_vectorize.o: dgemm_gpu_vectorize_access.cu
 	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
 
-dgemm_gpu_warptiling.o: dgemm_gpu_warptiling.cu
+dgemm_gpu_double_buffer.o: dgemm_gpu_double_buffer.cu
 	$(NVCC) -o $@ -c $(NVCCFLAGS) $< 
 
 dgemm_cublas.o: dgemm_cublas.cpp

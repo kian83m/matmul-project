@@ -1,16 +1,16 @@
 # Versions to build
-#BUILDS=gpu-CB cublas 2D-blocking warptiling vectorize
-BUILDS=warptiling
-#BUILDS=vectorize
+BUILDS=gpu-shared_memory_CB cublas 2D-blocking double_buffer vectorize gpu_basic
+#BUILDS=double_buffer
+#BUILDS=cublas
 
 
 # C and Fortran compilers
-CC=gcc
+CC=CC
 FC=ftn
-LD=gcc
+LD=CC
 
 NVCC=nvcc
-#NVCCFLAGS=-DCUDA -arch=sm_80
+#NVCCFLAGS=-DCUDA 
 NVCCFLAGS=-DCUDA -O3 -arch=sm_80 -use_fast_math -lineinfo -Xptxas="-v"
 
 # Python (for plotting)
